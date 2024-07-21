@@ -1,0 +1,2 @@
+nginx -g 'daemon off;' &
+python3 my_clock.py
