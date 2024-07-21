@@ -67,7 +67,7 @@ pipeline {
         stage('Deploy') {
             steps {
                 echo 'Deploying....'
-                sh 'docker images | grep clock'
+                sh 'docker images | grep clock || true'
 //                 sh 'docker compose push'
 //                 sh 'echo "docker compose push"'
             }
