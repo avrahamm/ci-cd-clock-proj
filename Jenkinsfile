@@ -9,6 +9,7 @@ pipeline {
     stages {
         stage('Load Environment Variables') {
             steps {
+                echo 'Load Environment Variables'
                 script {
                     // Access the global environment variable
                     def envFilePath = JENKINS_ENV_FILE_PATH
