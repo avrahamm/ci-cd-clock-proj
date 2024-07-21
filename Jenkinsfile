@@ -29,15 +29,14 @@ pipeline {
         stage('Git Clone Repo') {
             steps {
                 echo 'Git Clone Repo'
-                git branch: 'main', url: "${env.CLOCK_PROJ_GIT_REPO_URL}"
+                git branch: 'main',
+                    url: "${env.CLOCK_PROJ_GIT_REPO_URL}",
+                    credentialsId: "${env.GIT_CREDENTIALS_ID}"
             }
         }
 
         stage('Copy to env file') {
             steps {
-                script {
-
-                }
                 sh 'whoami'
                 sh 'pwd'
                 sh 'echo $CLOCK_PROJ_DOCKER_ENV_FILE_PATH; cp $CLOCK_PROJ_DOCKER_ENV_FILE_PATH .env; chmod 644 .env '
