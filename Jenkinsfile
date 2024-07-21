@@ -3,7 +3,7 @@ pipeline {
     environment {
         // Set from the global environment variable
         // to extract environment variables.
-        JENKINS_ENV_FILE_PATH = env.JENKINS_ENV_FILE_PATH
+        JENKINS_ENV_FILE_PATH = "${env.JENKINS_ENV_FILE_PATH}"
     }
 
     stages {
