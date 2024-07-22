@@ -1,5 +1,7 @@
 FROM nginx
-#WORKDIR /app
+#ARG WORKDIR="/usr/src/app"
+ARG WORKDIR
+
 WORKDIR $WORKDIR
 
 RUN apt update && \
