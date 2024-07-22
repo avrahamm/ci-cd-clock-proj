@@ -2,7 +2,7 @@ import time
 import datetime
 
 
-def get_current_time(format, output_file_path):
+def get_current_time(format):
     current_time = datetime.datetime.now().strftime(format)
     return current_time
 
