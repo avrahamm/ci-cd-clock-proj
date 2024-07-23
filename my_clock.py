@@ -18,5 +18,5 @@ output_file_path = "/usr/share/nginx/html/myclock.html"
 while True:
     current_time = get_current_time(format)
     write_time_output(current_time, output_file_path)
-    time.sleep(2)
+    time.sleep(20)
 
