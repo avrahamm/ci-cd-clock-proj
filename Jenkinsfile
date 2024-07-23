@@ -9,24 +9,32 @@ pipeline {
     stages {
         stage('Load Jenkins Environment Variables') {
             steps {
-                echo 'Load Jenkins Environment Variables'
-                sh 'echo $JENKINS_ENV_FILE_PATH'
                 script {
-                    // Access the global environment variable
-                    def envFilePath = JENKINS_ENV_FILE_PATH
-                    // Load the environment variables from the file
-                    def props = readFile(envFilePath)
-                    def lines = props.split('\n')
-                    for (line in lines) {
-                        if (line.trim()) {
-                            def (key, value) = line.split('=').collect { it.trim() }
-                            env."${key}" = value
-                        }
-                    }
+                    def envFilePath = env.JENKINS_ENV_FILE_PATH
+                    def props = readProperties file: envFilePath
+                    env.DOCKER_HUB_CREDENTIALS_ID = props.DOCKER_HUB_CREDENTIALS_ID
+                    env.CLOCK_PROJ_GIT_REPO_URL = props.CLOCK_PROJ_GIT_REPO_URL
+                    env.CLOCK_PROJ_DOCKER_ENV_FILE_PATH = props.CLOCK_PROJ_DOCKER_ENV_FILE_PATH
+                    env.GIT_CREDENTIALS_ID = props.GIT_CREDENTIALS_ID
                 }
             }
         }
 
+        stage('Load Docker Environment Variables') {
+            steps {
+                script {
+                    def dockerEnvProps = readProperties file: env.CLOCK_PROJ_DOCKER_ENV_FILE_PATH
+                    env.CHROME_VERSION = dockerEnvProps.CHROME_VERSION
+                    env.CHROME_DRIVER_VERSION = dockerEnvProps.CHROME_DRIVER_VERSION
+                    env.PYTHONPATH = dockerEnvProps.PYTHONPATH
+                    env.SELENIUM_HEADLESS_MODE_DISPLAY_PORT = dockerEnvProps.SELENIUM_HEADLESS_MODE_DISPLAY_PORT
+                    env.CONTAINER_APP_PORT = dockerEnvProps.CONTAINER_APP_PORT
+                    env.PUBLISHED_APP_PORT = dockerEnvProps.PUBLISHED_APP_PORT
+                    env.IMAGE_NAME = dockerEnvProps.IMAGE_NAME
+                    env.WORKDIR = dockerEnvProps.WORKDIR
+                }
+            }
+        }
 
         stage('Git Clone Repo') {
             steps {
@@ -36,91 +44,6 @@ pipeline {
                     credentialsId: "${env.GIT_CREDENTIALS_ID}"
             }
         }
-
-        stage('Copy Docker Environment Variables to .env file') {
-            steps {
-                sh 'whoami'
-                sh 'pwd'
-                sh 'echo $CLOCK_PROJ_DOCKER_ENV_FILE_PATH; cp $CLOCK_PROJ_DOCKER_ENV_FILE_PATH .env; chmod 644 .env '
-                sh 'cat .env'
-            }
-        }
-
-        stage('Export Docker Environment Variables') {
-//             steps {
-//                 script {
-//                     def lines = readFile('.env').split('\n')
-//                     for (line in lines) {
-//                         if (line.trim() && !line.startsWith('#')) {
-//                             def (key, value) = line.split('=').collect { it.trim() }
-//                             env."${key}" = value
-//                         }
-//                     }
-//                 }
-//             }
-               steps {
-                   script {
-                       def lines = readFile('.env').split('\n')
-                       for (line in lines) {
-                           if (line.trim() && !line.startsWith('#')) {
-                               def (key, value) = line.split('=').collect { it.trim() }
-                               sh "echo 'export ${key}=${value}' >> $WORKSPACE/env.sh"
-                           }
-                       }
-                       sh """
-                            chmod u+x $WORKSPACE/env.sh
-                        """
-                   }
-
-               }
-        }
-
-        stage('Verify Environment Variables') {
-
-            steps {
-                sh """
-                    . $WORKSPACE/env.sh
-                    echo \$WORKDIR
-                    echo \$IMAGE_NAME
-                """
-            }
-        }
-
-        stage('Build docker images, run container and test') {
-            steps {
-                echo 'Build docker images, run container and test'
-                sh """
-                    . $WORKSPACE/env.sh
-                    docker --debug build --build-arg WORKDIR=\$WORKDIR . -t \$IMAGE_NAME
-                """
-            }
-        }
-
-
-//         stage('Verify Environment Variables') {
-//             steps {
-//                 sh """
-//                     . $WORKSPACE/env.sh
-//                     echo "WORKDIR: \$WORKDIR"
-//                     echo "IMAGE_NAME: \$IMAGE_NAME"
-//                 """
-//             }
-//         }
-//
-//
-//         stage('Build docker images, run container and test') {
-//             steps {
-//                 echo 'Build docker images, run container and test'
-//                 script {
-//                     def workdir = sh(script: '. $WORKSPACE/env.sh && echo $WORKDIR', returnStdout: true).trim()
-//                     def imageName = sh(script: '. $WORKSPACE/env.sh && echo $IMAGE_NAME', returnStdout: true).trim()
-//
-//                     sh """
-//                         docker --debug build --build-arg WORKDIR=${workdir} . -t ${imageName}
-//                     """
-//                 }
-//             }
-//         }
 
         stage('Login to Docker Hub') {
             steps {
@@ -134,19 +57,36 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
+        stage('Build docker images, run container and test') {
             steps {
-                echo 'Deploying....'
-                sh 'docker images | grep clock || true'
-//                 sh 'docker compose push'
-//                 sh 'echo "docker compose push"'
+                echo 'Build docker images, run container and test'
+                sh """
+                    docker --debug build --build-arg WORKDIR=${env.WORKDIR} . -t ${env.IMAGE_NAME}
+                    docker run \
+                            -d --name clock \
+                            -p ${env.PUBLISHED_APP_PORT}:${env.CONTAINER_APP_PORT}  \
+                            ${env.IMAGE_NAME}
+                """
+            }
+        }
+
+        stage('Push docker images') {
+            steps {
+                echo 'Push docker images'
+                sh """
+                    docker images | grep clock || true
+                    docker image push ${env.IMAGE_NAME}
+                """
             }
         }
 
         stage('Cleaning') {
             steps {
                 echo 'Cleaning....'
-//                 sh 'docker compose down; pwd'
+                sh """
+                    docker stop clock || true
+                    docker rm clock || true
+                """
             }
         }
     }
