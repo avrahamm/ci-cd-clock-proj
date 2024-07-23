@@ -7,9 +7,10 @@ pipeline {
     }
 
     stages {
-        stage('Load Environment Variables') {
+        stage('Load Jenkins Environment Variables') {
             steps {
-                echo 'Load Environment Variables'
+                echo 'Load Jenkins Environment Variables'
+                sh 'echo $JENKINS_ENV_FILE_PATH'
                 script {
                     // Access the global environment variable
                     def envFilePath = JENKINS_ENV_FILE_PATH
@@ -26,6 +27,7 @@ pipeline {
             }
         }
 
+
         stage('Git Clone Repo') {
             steps {
                 echo 'Git Clone Repo'
@@ -35,7 +37,7 @@ pipeline {
             }
         }
 
-        stage('Copy to env file') {
+        stage('Copy Docker Environment Variables to .env file') {
             steps {
                 sh 'whoami'
                 sh 'pwd'
@@ -44,11 +46,79 @@ pipeline {
             }
         }
 
-//         stage('Test') {
+        stage('Export Docker Environment Variables') {
 //             steps {
-//                 echo 'Testing..'
-//                 sh 'echo $INITIAL_SCORE_FOR_TESTING > scores.txt;'
-//                 sh 'docker compose up -d --build'
+//                 script {
+//                     def lines = readFile('.env').split('\n')
+//                     for (line in lines) {
+//                         if (line.trim() && !line.startsWith('#')) {
+//                             def (key, value) = line.split('=').collect { it.trim() }
+//                             env."${key}" = value
+//                         }
+//                     }
+//                 }
+//             }
+               steps {
+                   script {
+                       def lines = readFile('.env').split('\n')
+                       for (line in lines) {
+                           if (line.trim() && !line.startsWith('#')) {
+                               def (key, value) = line.split('=').collect { it.trim() }
+                               sh "echo 'export ${key}=${value}' >> $WORKSPACE/env.sh"
+                           }
+                       }
+                       sh """
+                            chmod u+x $WORKSPACE/env.sh
+                        """
+                   }
+
+               }
+        }
+
+        stage('Verify Environment Variables') {
+
+            steps {
+                sh """
+                    . $WORKSPACE/env.sh
+                    echo \$WORKDIR
+                    echo \$IMAGE_NAME
+                """
+            }
+        }
+
+        stage('Build docker images, run container and test') {
+            steps {
+                echo 'Build docker images, run container and test'
+                sh """
+                    . $WORKSPACE/env.sh
+                    docker --debug build --build-arg WORKDIR=\$WORKDIR . -t \$IMAGE_NAME
+                """
+            }
+        }
+
+
+//         stage('Verify Environment Variables') {
+//             steps {
+//                 sh """
+//                     . $WORKSPACE/env.sh
+//                     echo "WORKDIR: \$WORKDIR"
+//                     echo "IMAGE_NAME: \$IMAGE_NAME"
+//                 """
+//             }
+//         }
+//
+//
+//         stage('Build docker images, run container and test') {
+//             steps {
+//                 echo 'Build docker images, run container and test'
+//                 script {
+//                     def workdir = sh(script: '. $WORKSPACE/env.sh && echo $WORKDIR', returnStdout: true).trim()
+//                     def imageName = sh(script: '. $WORKSPACE/env.sh && echo $IMAGE_NAME', returnStdout: true).trim()
+//
+//                     sh """
+//                         docker --debug build --build-arg WORKDIR=${workdir} . -t ${imageName}
+//                     """
+//                 }
 //             }
 //         }
 
