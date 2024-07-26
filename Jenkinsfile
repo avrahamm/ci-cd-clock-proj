@@ -84,8 +84,8 @@ pipeline {
             steps {
                 echo 'Cleaning....'
                 sh """
-                    docker stop clock || true
-                    docker rm clock || true
+//                     docker stop clock || true
+//                     docker rm clock || true
                 """
             }
         }
