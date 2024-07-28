@@ -13,12 +13,15 @@ RUN apt update && apt install -y nginx
 COPY requirements.txt ./
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Copy Nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+# to fix python module issues
+ENV PYTHONPATH=.
 
 # Copy code into the container
 COPY my_clock.py ./
-COPY tests/TestMyClock.py ./tests/
+COPY tests/test_my_clock.py ./tests/
+
+# Copy Nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
 
 # Copy the entrypoint script
 COPY entrypoint.sh ./entrypoint.sh

@@ -1,9 +1,12 @@
 #!/bin/bash
 set -e
 
+# to fix python module issues
+export PYTHONPATH=.
+
 # Run the tests
 echo "Running tests..."
-python3 -m unittest discover tests
+pytest
 
 # If tests pass, start Nginx
 echo "Starting Nginx..."
