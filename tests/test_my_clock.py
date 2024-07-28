@@ -5,9 +5,11 @@ import datetime
 
 from my_clock import get_current_time, write_time_output
 
+
 @pytest.fixture
 def mock_datetime():
     return datetime.datetime(2024, 7, 24, 12, 34, 56)
+
 
 def test_get_current_time(mock_datetime):
     with patch('datetime.datetime') as mock_dt:
@@ -16,6 +18,7 @@ def test_get_current_time(mock_datetime):
         assert get_current_time("%Y-%m-%d %H:%M:%S") == "2024-07-24 12:34:56"
         assert get_current_time("%H:%M:%S") == "12:34:56"
         assert get_current_time("%Y-%m-%d") == "2024-07-24"
+
 
 def test_write_time_output(mock_datetime):
     mock_time = "2024-07-24 12:34:56"
