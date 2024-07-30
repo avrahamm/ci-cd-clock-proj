@@ -48,7 +48,7 @@ COPY --chown=myuser:myuser tests/*.py ./tests/
 COPY nginx.conf /etc/nginx/nginx.conf
 
 # Copy the entrypoint script
-COPY entrypoint.sh ./entrypoint.sh
+COPY --chown=myuser:myuser entrypoint.sh ./entrypoint.sh
 RUN chmod u+x ./entrypoint.sh
 
 # Switch to non-root user
