@@ -4,18 +4,18 @@ set -e
 # to fix python module issues
 export PYTHONPATH=.
 
-# Run the tests
-echo "Running pytest tests..."
+# Run the Pytest tests
+echo "Running Pytest tests..."
 pytest tests/test_my_clock.py
 
-# If tests pass, start Nginx
+# Start Nginx
 echo "Starting Nginx..."
 nginx
 
-# Run the main application
-echo "Starting the main application and e2e tests..."
-python3 my_clock.py && python3 tests/test_my_clock_e2e.py
+# Start the main application in the background
+echo "Starting the main application..."
+python3 my_clock.py &
 
-# Run e2e tests
-#echo "Running e2e tests..."
-#python3 tests/test_my_clock_e2e.py
+# Run the E2E tests
+echo "Running E2E tests..."
+python3 tests/test_my_clock_e2e.py

@@ -26,12 +26,19 @@ pipeline {
                     def dockerEnvProps = readProperties file: env.CLOCK_PROJ_DOCKER_ENV_FILE_PATH
                     env.CHROME_VERSION = dockerEnvProps.CHROME_VERSION
                     env.CHROME_DRIVER_VERSION = dockerEnvProps.CHROME_DRIVER_VERSION
+                    env.CHROME_DRIVER_PATH = dockerEnvProps.CHROME_DRIVER_PATH
                     env.PYTHONPATH = dockerEnvProps.PYTHONPATH
                     env.SELENIUM_HEADLESS_MODE_DISPLAY_PORT = dockerEnvProps.SELENIUM_HEADLESS_MODE_DISPLAY_PORT
                     env.CONTAINER_APP_PORT = dockerEnvProps.CONTAINER_APP_PORT
                     env.PUBLISHED_APP_PORT = dockerEnvProps.PUBLISHED_APP_PORT
                     env.IMAGE_NAME = dockerEnvProps.IMAGE_NAME
                     env.WORKDIR = dockerEnvProps.WORKDIR
+
+                    env.UPDATE_CLOCK_TIME_INTERVAL = dockerEnvProps.UPDATE_CLOCK_TIME_INTERVAL
+                    env.CLOCK_APP_URL = dockerEnvProps.CLOCK_APP_URL
+                    env.REFRESH_INTERVAL = dockerEnvProps.REFRESH_INTERVAL
+                    env.TIME_FORMAT = dockerEnvProps.TIME_FORMAT
+                    env.OUTPUT_FILE_PATH = dockerEnvProps.OUTPUT_FILE_PATH
                 }
             }
         }
@@ -61,11 +68,15 @@ pipeline {
             steps {
                 echo 'Build docker images, run container and test'
                 sh """
-                    docker --debug build --build-arg WORKDIR=${env.WORKDIR} . -t ${env.IMAGE_NAME}
+                    docker --debug build -t ${env.IMAGE_NAME} .
                     docker run \
-                            -d --name clock \
-                            -p ${env.PUBLISHED_APP_PORT}:${env.CONTAINER_APP_PORT}  \
-                            ${env.IMAGE_NAME}
+                        -d --name clock \
+                        -e WORKDIR=${env.WORKDIR} \
+                        -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \
+                        -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \
+                        -e OUTPUT_FILE_PATH=${env.OUTPUT_FILE_PATH} \
+                        -p ${env.PUBLISHED_APP_PORT}:${env.CONTAINER_APP_PORT}  \
+                        ${env.IMAGE_NAME}
                 """
             }
         }

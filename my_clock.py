@@ -1,6 +1,9 @@
 import time
 import datetime
 import os
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 def get_current_time(time_format):
@@ -9,19 +12,25 @@ def get_current_time(time_format):
 
 
 def write_time_output(current_time, output_file_path):
-    with open(output_file_path, "w") as file:
-        file.write(f"<html><body><h1>{current_time}</h1></body></html>")
+    try:
+        with open(output_file_path, "w") as file:
+            file.write(f"<html><body><h1>{current_time}</h1></body></html>")
+        # logging.info(f"Time written to {output_file_path}")
+    except IOError as e:
+        logging.error(f"Error writing to file: {e}")
 
 
 def main():
-    time_format = "%Y-%m-%d %H:%M:%S"
-    output_file_path = "/usr/share/nginx/html/myclock.html"
+    time_format = os.getenv('TIME_FORMAT', "%Y-%m-%d %H:%M:%S")
+    output_file_path = os.getenv('OUTPUT_FILE_PATH', "/usr/share/nginx/html/myclock.html")
     update_clock_time_interval = int(os.getenv('UPDATE_CLOCK_TIME_INTERVAL', '10'))
+
+    logging.info(f"Starting clock. Output file: {output_file_path}, Update interval: {update_clock_time_interval}s")
 
     while True:
         current_time = get_current_time(time_format)
         write_time_output(current_time, output_file_path)
-        time.sleep(20)
+        time.sleep(update_clock_time_interval)
 
 
 if __name__ == "__main__":

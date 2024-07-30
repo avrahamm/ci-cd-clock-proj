@@ -12,6 +12,8 @@ import time
 
 class MyClockE2ETest(unittest.TestCase):
     def setUp(self):
+        print("setUp")
+        print(__class__)
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
@@ -24,8 +26,8 @@ class MyClockE2ETest(unittest.TestCase):
         chrome_driver_path = os.getenv('CHROME_DRIVER_PATH', '/usr/local/bin/chromedriver')
         self.driver = webdriver.Chrome(service=Service(chrome_driver_path), options=chrome_options)
 
-        clock_url = os.getenv('CLOCK_URL', 'http://localhost:8776')
-        self.driver.get(clock_url)
+        clock_app_url = os.getenv('CLOCK_APP_URL', 'http://localhost')
+        self.driver.get(clock_app_url)
 
     def test_clock_updates(self):
         wait = WebDriverWait(self.driver, 30)
