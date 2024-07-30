@@ -36,8 +36,10 @@ RUN wget -O /tmp/chromedriver.zip https://storage.googleapis.com/chrome-for-test
 # Install any needed packages specified in requirements.txt
 COPY --chown=myuser:myuser requirements.txt ./
 
+RUN pip install --upgrade pip
+
 USER myuser
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install -r requirements.txt
 USER root
 
 # Copy code into the container
