@@ -10,6 +10,8 @@ ENV WORKDIR=/usr/src/app \
     OUTPUT_FILE_PATH=/usr/share/nginx/html/myclock.html \
     CLOCK_APP_URL=http://localhost
 
+RUN useradd -m -s /bin/bash myuser
+
 # Set the working directory
 WORKDIR ${WORKDIR}
 
@@ -32,12 +34,15 @@ RUN wget -O /tmp/chromedriver.zip https://storage.googleapis.com/chrome-for-test
     rm /tmp/chromedriver.zip && rm -rf chromedriver-linux64
 
 # Install any needed packages specified in requirements.txt
-COPY requirements.txt ./
+COPY --chown=myuser:myuser requirements.txt ./
+
+USER myuser
 RUN pip install --upgrade pip && pip install -r requirements.txt
+USER root
 
 # Copy code into the container
-COPY my_clock.py ./
-COPY tests/*.py ./tests/
+COPY --chown=myuser:myuser my_clock.py ./
+COPY --chown=myuser:myuser tests/*.py ./tests/
 
 # Copy Nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
@@ -45,6 +50,9 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Copy the entrypoint script
 COPY entrypoint.sh ./entrypoint.sh
 RUN chmod u+x ./entrypoint.sh
+
+# Switch to non-root user
+USER myuser
 
 # Make port available to the world outside this container
 EXPOSE ${CONTAINER_APP_PORT}
