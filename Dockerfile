@@ -8,9 +8,13 @@ ENV WORKDIR=/usr/src/app \
     PYTHONPATH=. \
     CHROME_DRIVER_PATH=/usr/local/bin/chromedriver \
     OUTPUT_FILE_PATH=/usr/share/nginx/html/myclock.html \
-    CLOCK_APP_URL=http://localhost
+    CLOCK_APP_URL="http://localhost"
 
-RUN useradd -m -s /bin/bash myuser
+# Create a non-root user and give them sudo permissions.
+# To run as non-root user for security reasons.
+RUN useradd -m -s /bin/bash myuser && \
+    apt-get update && \
+    echo "myuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Set the working directory
 WORKDIR ${WORKDIR}
@@ -33,27 +37,31 @@ RUN wget -O /tmp/chromedriver.zip https://storage.googleapis.com/chrome-for-test
     mv ./chromedriver-linux64/chromedriver ${CHROME_DRIVER_PATH} && \
     rm /tmp/chromedriver.zip && rm -rf chromedriver-linux64
 
-# Install any needed packages specified in requirements.txt
+# Copy requirements file
 COPY --chown=myuser:myuser requirements.txt ./
 
-RUN pip install --upgrade pip
-
+# Switch to non-root user
 USER myuser
-RUN pip install -r requirements.txt
-USER root
 
-# Copy code into the container
+RUN pip install --upgrade pip && \
+    pip -v install -r requirements.txt
+# Install Python packages
+RUN pip install --user --no-warn-script-location --upgrade pip && \
+    pip install --user --no-warn-script-location -r requirements.txt && \
+    pip install --user --no-warn-script-location pytest
+
+# Copy code and configuration files
 COPY --chown=myuser:myuser my_clock.py ./
 COPY --chown=myuser:myuser tests/*.py ./tests/
-
-# Copy Nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
-
-# Copy the entrypoint script
 COPY --chown=myuser:myuser entrypoint.sh ./entrypoint.sh
 RUN chmod u+x ./entrypoint.sh
 
-# Switch to non-root user
+USER root
+COPY nginx.conf /etc/nginx/nginx.conf
+RUN chown -R myuser:myuser /var/log/nginx /var/lib/nginx /var/run /run /usr/share/nginx/html ${WORKDIR} && \
+    chmod 755 /var/log/nginx /var/lib/nginx /var/run /run /usr/share/nginx/html ${WORKDIR}
+
+# Switch back to non-root user
 USER myuser
 
 # Make port available to the world outside this container

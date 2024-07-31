@@ -86,7 +86,7 @@ pipeline {
                 echo 'Push docker images'
                 sh """
                     docker images | grep clock || true
-                    docker image push ${env.IMAGE_NAME}
+                    # docker image push ${env.IMAGE_NAME}
                 """
             }
         }
@@ -95,8 +95,8 @@ pipeline {
             steps {
                 echo 'Cleaning....'
                 sh """
-//                     docker stop clock || true
-//                     docker rm clock || true
+                   # docker stop clock || true
+                   # docker rm clock || true
                 """
             }
         }

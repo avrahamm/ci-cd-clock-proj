@@ -7,5 +7,6 @@ docker --debug build \
 
 docker run -d \
     --name host-clock \
+    -e CLOCK_APP_URL="http://localhost" \
     -p 8776:80 avrahamm/ci-cd-clock-proj:selenium
 
