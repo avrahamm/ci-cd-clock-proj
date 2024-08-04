@@ -1,23 +1,42 @@
 # Start from an official Python runtime as a parent image
-FROM python:3.9
+FROM python:3.9 AS builder
 
 # Set environment variables
 ENV WORKDIR=/usr/src/app \
-    CHROME_DRIVER_VERSION=126.0.6478.62 \
-    CONTAINER_APP_PORT=80 \
     PYTHONPATH=. \
-    CHROME_DRIVER_PATH=/usr/local/bin/chromedriver \
-    OUTPUT_FILE_PATH=/usr/share/nginx/html/myclock.html \
-    CLOCK_APP_URL="http://localhost"
+    PATH="/home/myuser/.local/bin:${PATH}"
 
 # Create a non-root user and give them sudo permissions.
 # To run as non-root user for security reasons.
 RUN useradd -m -s /bin/bash myuser && \
-    apt-get update && \
+    apt update && \
     echo "myuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Set the working directory
 WORKDIR ${WORKDIR}
+
+# Copy requirements file
+COPY --chown=myuser:myuser requirements.txt ./
+
+# Switch to non-root user
+USER myuser
+
+# Install Python packages
+RUN pip -v install --user pip && \
+    pip -v install -r requirements.txt
+
+
+# Test stage
+FROM builder AS tester
+
+USER root
+
+# Set environment variables
+ENV CONTAINER_APP_PORT=80 \
+    CHROME_DRIVER_VERSION=126.0.6478.62 \
+    CHROME_DRIVER_PATH=/usr/local/bin/chromedriver \
+    OUTPUT_FILE_PATH=/usr/share/nginx/html/myclock.html \
+    CLOCK_APP_URL="http://localhost"
 
 # Install Nginx
 RUN apt update && \
@@ -37,26 +56,6 @@ RUN wget -O /tmp/chromedriver.zip https://storage.googleapis.com/chrome-for-test
     mv ./chromedriver-linux64/chromedriver ${CHROME_DRIVER_PATH} && \
     rm /tmp/chromedriver.zip && rm -rf chromedriver-linux64
 
-# Copy requirements file
-COPY --chown=myuser:myuser requirements.txt ./
-
-# Switch to non-root user
-USER myuser
-
-RUN pip install --upgrade pip && \
-    pip -v install -r requirements.txt
-# Install Python packages
-RUN pip install --user --no-warn-script-location --upgrade pip && \
-    pip install --user --no-warn-script-location -r requirements.txt && \
-    pip install --user --no-warn-script-location pytest
-
-# Copy code and configuration files
-COPY --chown=myuser:myuser my_clock.py ./
-COPY --chown=myuser:myuser tests/*.py ./tests/
-COPY --chown=myuser:myuser entrypoint.sh ./entrypoint.sh
-RUN chmod u+x ./entrypoint.sh
-
-USER root
 COPY nginx.conf /etc/nginx/nginx.conf
 RUN chown -R myuser:myuser /var/log/nginx /var/lib/nginx /var/run /run /usr/share/nginx/html ${WORKDIR} && \
     chmod 755 /var/log/nginx /var/lib/nginx /var/run /run /usr/share/nginx/html ${WORKDIR}
@@ -64,9 +63,56 @@ RUN chown -R myuser:myuser /var/log/nginx /var/lib/nginx /var/run /run /usr/shar
 # Switch back to non-root user
 USER myuser
 
+# Copy code and configuration files
+COPY --chown=myuser:myuser my_clock.py ./
+COPY --chown=myuser:myuser tests/*.py ./tests/
+COPY --chown=myuser:myuser run-tests.sh ./run-tests.sh
+RUN chmod u+x ./run-tests.sh
+
 # Make port available to the world outside this container
 EXPOSE ${CONTAINER_APP_PORT}
 
 # Set the entrypoint
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["./run-tests.sh"]
 
+# Production stage
+FROM python:3.9-alpine AS production
+
+# Set environment variables
+ENV CONTAINER_APP_PORT=80 \
+    WORKDIR=/usr/src/app \
+    PYTHONPATH=. \
+    PATH="/home/myuser/.local/bin:${PATH}" \
+    OUTPUT_FILE_PATH=/usr/share/nginx/html/myclock.html
+
+# Create a non-root user
+RUN adduser -D myuser
+
+# Set the working directory
+WORKDIR ${WORKDIR}
+
+# Install nginx
+RUN apk add --no-cache nginx
+
+# Copy Python packages and application code
+COPY --from=builder --chown=myuser:myuser /home/myuser/.local /home/myuser/.local
+COPY --chown=myuser:myuser my_clock.py ./
+COPY --chown=myuser:myuser tests/*.py ./tests/
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Set proper permissions
+RUN chown -R myuser:myuser /var/log/nginx /var/lib/nginx /run /usr/share/nginx/html && \
+    chmod 755 /var/log/nginx /var/lib/nginx /run /usr/share/nginx/html
+
+# Switch to non-root user
+USER myuser
+
+# Copy the entrypoint script
+COPY --chown=myuser:myuser entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
+# Expose the container port
+EXPOSE ${CONTAINER_APP_PORT}
+
+# Set the entrypoint
+ENTRYPOINT ["./entrypoint.sh"]
