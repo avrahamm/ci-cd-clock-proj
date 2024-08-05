@@ -66,7 +66,7 @@ pipeline {
             }
         }
 
-        stage('Tester step - build docker images, run container and test') {
+        stage('Tester stage') {
             steps {
                 echo 'Build docker images, run container and test'
                 sh """
@@ -84,12 +84,32 @@ pipeline {
             }
         }
 
-        stage('Push tester docker image') {
+        stage('Production stage') {
             steps {
-                echo 'Push tester docker image'
+                echo 'Tests passed. Production stage - build docker images and run container'
+                sh """
+                    docker --debug build --target production \
+                           -t ${env.IMAGE_NAME}:production .
+                    docker run --rm \
+                        -d --name clock-production \
+                        -e WORKDIR=${env.WORKDIR} \
+                        -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \
+                        -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \
+                        -e OUTPUT_FILE_PATH=${env.PROD_OUTPUT_FILE_PATH} \
+                        -p ${env.PUBLISHED_PROD_APP_PORT}:${env.CONTAINER_APP_PORT}  \
+                        ${env.IMAGE_NAME}:production
+                """
+            }
+        }
+
+
+        stage('Push test and production docker images') {
+            steps {
+                echo 'Push test and production docker images'
                 sh """
                     docker images | grep clock || true
                     # docker image push ${env.IMAGE_NAME}:test
+                    # docker image push ${env.IMAGE_NAME}:production
                 """
             }
         }
@@ -98,8 +118,8 @@ pipeline {
             steps {
                 echo 'Cleaning....'
                 sh """
-                   # docker stop clock || true
-                   # docker rm clock || true
+                   # docker stop clock-production || true
+                   # docker rm clock-production || true
                 """
             }
         }
