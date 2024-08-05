@@ -30,7 +30,8 @@ pipeline {
                     env.PYTHONPATH = dockerEnvProps.PYTHONPATH
                     env.SELENIUM_HEADLESS_MODE_DISPLAY_PORT = dockerEnvProps.SELENIUM_HEADLESS_MODE_DISPLAY_PORT
                     env.CONTAINER_APP_PORT = dockerEnvProps.CONTAINER_APP_PORT
-                    env.PUBLISHED_APP_PORT = dockerEnvProps.PUBLISHED_APP_PORT
+                    env.PUBLISHED_TEST_APP_PORT = dockerEnvProps.PUBLISHED_TEST_APP_PORT
+                    env.PUBLISHED_PROD_APP_PORT = dockerEnvProps.PUBLISHED_PROD_APP_PORT
                     env.IMAGE_NAME = dockerEnvProps.IMAGE_NAME
                     env.WORKDIR = dockerEnvProps.WORKDIR
 
@@ -38,7 +39,8 @@ pipeline {
                     env.CLOCK_APP_URL = dockerEnvProps.CLOCK_APP_URL
                     env.REFRESH_INTERVAL = dockerEnvProps.REFRESH_INTERVAL
                     env.TIME_FORMAT = dockerEnvProps.TIME_FORMAT
-                    env.OUTPUT_FILE_PATH = dockerEnvProps.OUTPUT_FILE_PATH
+                    env.TEST_OUTPUT_FILE_PATH = dockerEnvProps.TEST_OUTPUT_FILE_PATH
+                    env.PROD_OUTPUT_FILE_PATH = dockerEnvProps.PROD_OUTPUT_FILE_PATH
                 }
             }
         }
@@ -64,29 +66,30 @@ pipeline {
             }
         }
 
-        stage('Build docker images, run container and test') {
+        stage('Tester step - build docker images, run container and test') {
             steps {
                 echo 'Build docker images, run container and test'
                 sh """
-                    docker --debug build -t ${env.IMAGE_NAME} .
-                    docker run \
-                        -d --name clock \
+                    docker --debug build --target tester \
+                           -t ${env.IMAGE_NAME}:test .
+                    docker run --rm \
+                        -d --name clock-test \
                         -e WORKDIR=${env.WORKDIR} \
                         -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \
                         -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \
-                        -e OUTPUT_FILE_PATH=${env.OUTPUT_FILE_PATH} \
-                        -p ${env.PUBLISHED_APP_PORT}:${env.CONTAINER_APP_PORT}  \
-                        ${env.IMAGE_NAME}
+                        -e OUTPUT_FILE_PATH=${env.TEST_OUTPUT_FILE_PATH} \
+                        -p ${env.PUBLISHED_TEST_APP_PORT}:${env.CONTAINER_APP_PORT}  \
+                        ${env.IMAGE_NAME}:test
                 """
             }
         }
 
-        stage('Push docker images') {
+        stage('Push tester docker image') {
             steps {
-                echo 'Push docker images'
+                echo 'Push tester docker image'
                 sh """
                     docker images | grep clock || true
-                    # docker image push ${env.IMAGE_NAME}
+                    # docker image push ${env.IMAGE_NAME}:test
                 """
             }
         }
