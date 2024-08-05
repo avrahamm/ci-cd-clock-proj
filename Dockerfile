@@ -16,14 +16,14 @@ RUN useradd -m -s /bin/bash myuser && \
 WORKDIR ${WORKDIR}
 
 # Copy requirements file
-COPY --chown=myuser:myuser requirements.txt ./
+COPY --chown=myuser:myuser requirements-base.txt ./
 
 # Switch to non-root user
 USER myuser
 
-# Install Python packages
+# Install base Python packages
 RUN pip -v install --user pip && \
-    pip -v install -r requirements.txt
+    pip -v install -r requirements-base.txt
 
 
 # Test stage
@@ -59,6 +59,17 @@ RUN wget -O /tmp/chromedriver.zip https://storage.googleapis.com/chrome-for-test
 COPY nginx-tester.conf /etc/nginx/nginx.conf
 RUN chown -R myuser:myuser /var/log/nginx /var/lib/nginx /var/run /run /usr/share/nginx/html ${WORKDIR} && \
     chmod 755 /var/log/nginx /var/lib/nginx /var/run /run /usr/share/nginx/html ${WORKDIR}
+
+# Copy requirements file
+COPY --chown=myuser:myuser requirements-test.txt ./
+
+# Switch to non-root user
+USER myuser
+
+# Install additional test packages
+RUN pip -v install --user pip && \
+    pip -v install -r requirements-test.txt
+
 
 # Switch back to non-root user
 USER myuser
