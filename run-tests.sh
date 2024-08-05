@@ -26,13 +26,10 @@ python3 my_clock.py &
 echo "Running E2E tests..."
 python3 tests/test_my_clock_e2e.py
 
-# Keep the container running
-wait
+# Wait E2E tests to complete
+sleep 30
 
-
-################
-
-## Stop the application and Nginx
-#echo "Stopping the application and Nginx..."
-#kill %1
-#sudo nginx -s stop
+# Stop the application and Nginx
+echo "Stopping the application and Nginx..."
+kill %1
+sudo nginx -s stop

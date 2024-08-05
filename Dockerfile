@@ -56,7 +56,7 @@ RUN wget -O /tmp/chromedriver.zip https://storage.googleapis.com/chrome-for-test
     mv ./chromedriver-linux64/chromedriver ${CHROME_DRIVER_PATH} && \
     rm /tmp/chromedriver.zip && rm -rf chromedriver-linux64
 
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx-tester.conf /etc/nginx/nginx.conf
 RUN chown -R myuser:myuser /var/log/nginx /var/lib/nginx /var/run /run /usr/share/nginx/html ${WORKDIR} && \
     chmod 755 /var/log/nginx /var/lib/nginx /var/run /run /usr/share/nginx/html ${WORKDIR}
 
@@ -83,7 +83,7 @@ ENV CONTAINER_APP_PORT=80 \
     WORKDIR=/usr/src/app \
     PYTHONPATH=. \
     PATH="/home/myuser/.local/bin:${PATH}" \
-    OUTPUT_FILE_PATH=/usr/share/nginx/html/myclock.html
+    OUTPUT_FILE_PATH=/var/lib/nginx/html/myclock.html
 
 # Create a non-root user
 RUN adduser -D myuser
@@ -94,15 +94,17 @@ WORKDIR ${WORKDIR}
 # Install nginx
 RUN apk add --no-cache nginx
 
+RUN apk add --no-cache nginx && \
+    mkdir -p /run/nginx
+
 # Copy Python packages and application code
 COPY --from=builder --chown=myuser:myuser /home/myuser/.local /home/myuser/.local
 COPY --chown=myuser:myuser my_clock.py ./
-COPY --chown=myuser:myuser tests/*.py ./tests/
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx-alpine.conf /etc/nginx/nginx.conf
 
-# Set proper permissions
-RUN chown -R myuser:myuser /var/log/nginx /var/lib/nginx /run /usr/share/nginx/html && \
-    chmod 755 /var/log/nginx /var/lib/nginx /run /usr/share/nginx/html
+# Set correct permissions
+RUN chown -R myuser:myuser /var/log/nginx /var/lib/nginx /run/nginx && \
+    chmod 755 /var/log/nginx /var/lib/nginx /run/nginx
 
 # Switch to non-root user
 USER myuser
