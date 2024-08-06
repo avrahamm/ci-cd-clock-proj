@@ -41,6 +41,8 @@ pipeline {
                     env.TIME_FORMAT = dockerEnvProps.TIME_FORMAT
                     env.TEST_OUTPUT_FILE_PATH = dockerEnvProps.TEST_OUTPUT_FILE_PATH
                     env.PROD_OUTPUT_FILE_PATH = dockerEnvProps.PROD_OUTPUT_FILE_PATH
+                    env.TEST_CONTAINER_NAME = dockerEnvProps.TEST_CONTAINER_NAME
+                    env.PROD_CONTAINER_NAME = dockerEnvProps.PROD_CONTAINER_NAME
                 }
             }
         }
@@ -82,7 +84,7 @@ pipeline {
                     docker --debug build --target tester \
                            -t ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT} .
                     docker run --rm \
-                        -d --name clock-test \
+                        -d --name ${env.TEST_CONTAINER_NAME} \
                         -e WORKDIR=${env.WORKDIR} \
                         -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \
                         -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \
@@ -100,14 +102,16 @@ pipeline {
                     docker --debug build --target production \
                            -t ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT} .
                     docker run --rm \
-                        -d --name clock-production \
+                        -d --name ${env.PROD_CONTAINER_NAME} \
                         -e WORKDIR=${env.WORKDIR} \
                         -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \
                         -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \
                         -e OUTPUT_FILE_PATH=${env.PROD_OUTPUT_FILE_PATH} \
                         -p ${env.PUBLISHED_PROD_APP_PORT}:${env.CONTAINER_APP_PORT}  \
                         ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
-                """
+                   """
+                // Optional: Add a small delay to ensure everything is running
+                sleep 5
             }
         }
 
@@ -117,8 +121,8 @@ pipeline {
                 echo 'Push test and production docker images'
                 sh """
                     docker images | grep clock || true
-                    # docker image push ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT}
-                    # docker image push ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
+                    docker image push ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT}
+                    docker image push ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
                 """
             }
         }
@@ -127,8 +131,12 @@ pipeline {
             steps {
                 echo 'Cleaning....'
                 sh """
-                   docker stop clock-production || true
-                   docker image prune -f || true
+                   docker stop ${env.TEST_CONTAINER_NAME}
+                   docker stop ${env.PROD_CONTAINER_NAME}
+                   docker rmi ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT} || true
+                   docker rmi ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT} || true
+                   # Prune any dangling images
+                   docker image prune -f
                 """
             }
         }
