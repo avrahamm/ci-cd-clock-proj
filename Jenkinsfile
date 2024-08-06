@@ -54,6 +54,15 @@ pipeline {
             }
         }
 
+        stage('Set Git Commit Hash') {
+            steps {
+                script {
+                    env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    echo "Short commit hash: ${env.GIT_COMMIT_SHORT}"
+                }
+            }
+        }
+
         stage('Login to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(
@@ -71,7 +80,7 @@ pipeline {
                 echo 'Build docker images, run container and test'
                 sh """
                     docker --debug build --target tester \
-                           -t ${env.IMAGE_NAME}:test .
+                           -t ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT} .
                     docker run --rm \
                         -d --name clock-test \
                         -e WORKDIR=${env.WORKDIR} \
@@ -79,7 +88,7 @@ pipeline {
                         -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \
                         -e OUTPUT_FILE_PATH=${env.TEST_OUTPUT_FILE_PATH} \
                         -p ${env.PUBLISHED_TEST_APP_PORT}:${env.CONTAINER_APP_PORT}  \
-                        ${env.IMAGE_NAME}:test
+                        ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT}
                 """
             }
         }
@@ -89,7 +98,7 @@ pipeline {
                 echo 'Tests passed. Production stage - build docker images and run container'
                 sh """
                     docker --debug build --target production \
-                           -t ${env.IMAGE_NAME}:production .
+                           -t ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT} .
                     docker run --rm \
                         -d --name clock-production \
                         -e WORKDIR=${env.WORKDIR} \
@@ -97,7 +106,7 @@ pipeline {
                         -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \
                         -e OUTPUT_FILE_PATH=${env.PROD_OUTPUT_FILE_PATH} \
                         -p ${env.PUBLISHED_PROD_APP_PORT}:${env.CONTAINER_APP_PORT}  \
-                        ${env.IMAGE_NAME}:production
+                        ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
                 """
             }
         }
@@ -108,8 +117,8 @@ pipeline {
                 echo 'Push test and production docker images'
                 sh """
                     docker images | grep clock || true
-                    # docker image push ${env.IMAGE_NAME}:test
-                    # docker image push ${env.IMAGE_NAME}:production
+                    # docker image push ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT}
+                    # docker image push ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
                 """
             }
         }
@@ -118,8 +127,8 @@ pipeline {
             steps {
                 echo 'Cleaning....'
                 sh """
-                   # docker stop clock-production || true
-                   # docker rm clock-production || true
+                   docker stop clock-production || true
+                   docker image prune -f || true
                 """
             }
         }
