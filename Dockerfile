@@ -1,5 +1,7 @@
+ARG PYTHON_VERSION=3.9
+
 # Start from an official Python runtime as a parent image
-FROM python:3.9 AS builder
+FROM python:${PYTHON_VERSION} AS builder
 
 # Set environment variables
 ENV WORKDIR=/usr/src/app \
@@ -31,9 +33,11 @@ FROM builder AS tester
 
 USER root
 
+ARG CHROME_DRIVER_VERSION=126.0.6478.62
+
 # Set environment variables
 ENV CONTAINER_APP_PORT=80 \
-    CHROME_DRIVER_VERSION=126.0.6478.62 \
+    CHROME_DRIVER_VERSION=${CHROME_DRIVER_VERSION} \
     CHROME_DRIVER_PATH=/usr/local/bin/chromedriver \
     OUTPUT_FILE_PATH=/usr/share/nginx/html/myclock.html \
     CLOCK_APP_URL="http://localhost"
