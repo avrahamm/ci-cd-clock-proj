@@ -1,0 +1,75 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKERHUB_CREDENTIALS_ID = 'avrahamm-docker-hub-credentials-id'
+//         AWS_CREDENTIALS = credentials('aws-clock-admin-user-id')
+        AWS_CREDENTIALS_ID = 'aws-clock-admin-user-id'
+        AWS_REGION = 'eu-central-1'
+        EC2_IP = '3.70.156.94'
+        EC2_USER = 'ec2-user'  // Changed to default Red Hat user
+        SSH_KEY_ID  = 'ec2-user-ssh-clock1-key-id'
+        GIT_COMMIT_SHORT = '51d2e0b'
+    }
+
+    stages {
+        stage('Login to Docker Hub') {
+            steps {
+                echo "${}"
+                withCredentials([usernamePassword(
+                    credentialsId: env.DOCKERHUB_CREDENTIALS_ID,
+                    usernameVariable: 'DOCKER_USERNAME',
+                    passwordVariable: 'DOCKER_PASSWORD'
+                  )]) {
+                    sh 'echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin'
+                }
+            }
+        }
+
+        stage('Deploy to EC2') {
+            steps {
+                script {
+                    // AWS CLI commands will run in the Jenkins container
+                    withAWS(credentials: env.AWS_CREDENTIALS_ID, region: env.AWS_REGION) {
+                        // SSH into EC2 and deploy
+                        sshagent(credentials: [env.SSH_KEY_ID]) {
+                            sh """
+                                ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_IP} '
+                                    # Install Docker if not already installed
+                                    if ! command -v docker &> /dev/null; then
+                                        sudo yum update -y
+                                        sudo yum install -y docker
+                                        sudo systemctl start docker
+                                        sudo systemctl enable docker
+                                        sudo usermod -aG docker ${EC2_USER}
+                                    fi
+
+                                    # Pull and run the new Docker image
+                                    sudo docker pull avrahamm/ci-cd-clock-proj:production-${GIT_COMMIT_SHORT}
+                                    sudo docker stop ci-cd-clock-proj || true
+                                    sudo docker rm ci-cd-clock-proj || true
+                                    sudo docker run -d --name ci-cd-clock-proj -p 80:80 avrahamm/ci-cd-clock-proj:production-${GIT_COMMIT_SHORT}
+                                '
+                            """
+                        }
+                    }
+                }
+            }
+
+        }
+    }
+
+    post {
+            success {
+                echo 'Deployment successful!'
+                // Add notification here, e.g., Slack or email
+            }
+            failure {
+                echo 'Deployment failed!'
+                // Add notification here, e.g., Slack or email
+            }
+            always {
+                sh 'docker logout'
+            }
+        }
+}

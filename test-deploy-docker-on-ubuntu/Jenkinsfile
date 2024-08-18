@@ -1,0 +1,70 @@
+pipeline {
+    agent any
+
+    environment {
+        // Set from the global environment variable
+        // to extract environment variables.
+        JENKINS_ENV_FILE_PATH = "${env.JENKINS_ENV_FILE_PATH}"
+        // The original DOCKER_HOST for building images
+        DOCKER_HOST_BUILD = 'tcp://docker:2376'
+        // The DOCKER_HOST for deployment
+        UBUNTU_HOST_IP = '192.168.1.246'
+        DOCKER_HOST_DEPLOY = "tcp://$UBUNTU_HOST_IP:2375"
+    }
+
+    stages {
+        stage('Hello 1') {
+            steps {
+                script {
+                            try {
+                                echo 'Hello 1'
+                                sh """
+                                    env
+                                """
+                            } catch (Exception e) {
+                                currentBuild.result = 'FAILURE'
+                                error("Hello 1: ${e.message}")
+                            }
+                        }
+
+                }
+        }
+
+        stage('Git Clone Repo') {
+            steps {
+                echo 'Git Clone Repo'
+                git branch: 'main',
+                    url: "https://github.com/avrahamm/MySoftware.git",
+                    credentialsId: "avrahamm-github-credentials-id"
+            }
+        }
+
+
+        stage('Login to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'avrahamm-docker-hub-credentials-id',
+                    usernameVariable: 'DOCKER_USERNAME',
+                    passwordVariable: 'DOCKER_PASSWORD'
+                  )]) {
+                    sh 'echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin'
+                }
+            }
+        }
+
+    }
+
+    post {
+            success {
+                echo 'Deployment successful!'
+                // Add notification here, e.g., Slack or email
+            }
+            failure {
+                echo 'Deployment failed!'
+                // Add notification here, e.g., Slack or email
+            }
+            always {
+                sh 'docker logout'
+            }
+        }
+}
