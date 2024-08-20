@@ -65,7 +65,8 @@ pipeline {
                         def awsEnvProps = readProperties file: env.CLOCK_PROJ_AWS_ENV_FILE_PATH
                         env.AWS_CREDENTIALS_ID = awsEnvProps.AWS_CREDENTIALS_ID
                         env.AWS_REGION = awsEnvProps.AWS_REGION
-                        env.EC2_IP = awsEnvProps.EC2_IP
+                        env.EC2_TEST_IP = awsEnvProps.EC2_TEST_IP
+                        env.EC2_PRODUCTION_IP = awsEnvProps.EC2_PRODUCTION_IP
                         env.AWS_PROD_PORT = awsEnvProps.AWS_PROD_PORT
                         env.EC2_USER = awsEnvProps.EC2_USER
                         env.SSH_KEY_ID = awsEnvProps.SSH_KEY_ID
@@ -79,7 +80,7 @@ pipeline {
         }
 
 
-        stage('Deploy and Test on EC2') {
+        stage('Test on EC2') {
             steps {
                 script {
                     withCredentials([
@@ -89,7 +90,7 @@ pipeline {
                         withAWS(credentials: env.AWS_CREDENTIALS_ID, region: env.AWS_REGION) {
                             sshagent(credentials: [env.SSH_KEY_ID]) {
                                 sh """
-                                    ssh -o StrictHostKeyChecking=no ${env.EC2_USER}@${env.EC2_IP} << 'EOT'
+                                    ssh -o StrictHostKeyChecking=no ${env.EC2_USER}@${env.EC2_TEST_IP} << 'EOT'
         set -ex
         # Export credentials as environment variables
         export GIT_USERNAME='${GIT_USERNAME}'
@@ -136,6 +137,11 @@ pipeline {
         # List Docker images for verification
         # echo "Docker images:"
         # docker images
+        
+        echo 'Push test and production docker images'
+        docker images | grep clock || true
+        docker image push ${env.IMAGE_NAME}:test-\${GIT_COMMIT_SHORT}
+        docker image push ${env.IMAGE_NAME}:production-\${GIT_COMMIT_SHORT}
 
         # Logout from Docker Hub
         docker logout
@@ -152,27 +158,151 @@ EOT
         }
 
 
-        stage('Health Check on EC2') {
+        stage('Health Check on Test EC2') {
             steps {
                 script {
                     try {
-                        def response = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${env.EC2_IP}:${env.AWS_PROD_PORT}", returnStdout: true).trim()
+                        def response = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${env.EC2_TEST_IP}:${env.AWS_PROD_PORT}", returnStdout: true).trim()
                         if (response == "200") {
-                            echo "Application is up and running on EC2!"
+                            echo "Application is up and running on Test EC2!"
                         } else {
-                            error "Application health check failed on EC2. HTTP response: ${response}"
+                            error "Application health check failed on Test EC2. HTTP response: ${response}"
                         }
                     } catch (Exception e) {
                         currentBuild.result = 'FAILURE'
-                        error "Failed on stage('Health Check on EC2'): ${e.message}"
+                        error "Failed on stage('Health Check on Test EC2'): ${e.message}"
+                    }
+                }
+            }
+        }
+
+        stage('Clean on Test EC2') {
+           steps {
+               script {
+                   withCredentials([
+                       usernamePassword(credentialsId: env.GIT_CREDENTIALS_ID, usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD'),
+                       usernamePassword(credentialsId: env.DOCKER_HUB_CREDENTIALS_ID, usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')
+                   ]) {
+                       withAWS(credentials: env.AWS_CREDENTIALS_ID, region: env.AWS_REGION) {
+                           sshagent(credentials: [env.SSH_KEY_ID]) {
+                               sh """
+                                   ssh -o StrictHostKeyChecking=no ${env.EC2_USER}@${env.EC2_TEST_IP} << 'EOT'
+           set -ex
+           cd clock-project
+
+           # Set GIT_COMMIT_SHORT (with error checking)
+           GIT_COMMIT_SHORT=\$(git rev-parse --short HEAD)
+           echo "GIT_COMMIT_SHORT = \${GIT_COMMIT_SHORT}"
+
+           # List Docker images for verification
+           echo "Docker containers: "
+           docker ps
+           echo "Docker images:"
+           docker images
+
+           docker stop ${env.TEST_CONTAINER_NAME} || true
+           docker stop ${env.PROD_CONTAINER_NAME} || true
+           docker rmi ${env.IMAGE_NAME}:test-\${GIT_COMMIT_SHORT} || true
+           docker rmi ${env.IMAGE_NAME}:production-\${GIT_COMMIT_SHORT} || true
+           # Prune any dangling images
+           docker image prune -f || true
+
+           # Clear sensitive environment variables
+EOT
+                                """
+                            }
+                        }
                     }
                 }
             }
         }
 
 
-    }
+        stage('Deploy on EC2') {
+                    steps {
+                        script {
+                            withCredentials([
+                                usernamePassword(credentialsId: env.GIT_CREDENTIALS_ID, usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD'),
+                                usernamePassword(credentialsId: env.DOCKER_HUB_CREDENTIALS_ID, usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')
+                            ]) {
+                                withAWS(credentials: env.AWS_CREDENTIALS_ID, region: env.AWS_REGION) {
+                                    sshagent(credentials: [env.SSH_KEY_ID]) {
+                                        sh """
+                                            ssh -o StrictHostKeyChecking=no ${env.EC2_USER}@${env.EC2_PRODUCTION_IP} << 'EOT'
+            set -ex
+            # Export credentials as environment variables
+            export GIT_USERNAME='${GIT_USERNAME}'
+            export GIT_PASSWORD='${GIT_PASSWORD}'
+            export DOCKER_USERNAME='${DOCKER_USERNAME}'
+            export DOCKER_PASSWORD='${DOCKER_PASSWORD}'
 
+            # Clone Git repo using credentials
+            rm -rf clock-project || true
+            git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@${env.CLOCK_PROJ_GIT_REPO_URL.replace('https://', '')} clock-project
+            cd clock-project
+
+            # Set GIT_COMMIT_SHORT (with error checking)
+            GIT_COMMIT_SHORT=\$(git rev-parse --short HEAD)
+            echo "GIT_COMMIT_SHORT = \${GIT_COMMIT_SHORT}"
+
+            # Login to Docker Hub
+            echo \${DOCKER_PASSWORD} | docker login -u \${DOCKER_USERNAME} --password-stdin
+
+
+
+            # Run Production Image
+            docker run --rm \\
+                -d --name ${env.PROD_CONTAINER_NAME} \\
+                -e WORKDIR=${env.WORKDIR} \\
+                -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \\
+                -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \\
+                -e OUTPUT_FILE_PATH=${env.PROD_OUTPUT_FILE_PATH} \\
+                -p ${env.AWS_PROD_PORT}:${env.CONTAINER_APP_PORT} \\
+                ${env.IMAGE_NAME}:production-\${GIT_COMMIT_SHORT}
+
+            sleep 10
+
+            # List Docker images for verification
+            echo "Docker containers: "
+            docker ps
+            echo "Docker images:"
+            docker images
+
+            # Logout from Docker Hub
+            docker logout
+
+            # Clear sensitive environment variables
+            unset GIT_USERNAME GIT_PASSWORD DOCKER_USERNAME DOCKER_PASSWORD
+EOT
+                                    """
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+        stage('Health Check on Production EC2') {
+                    steps {
+                        script {
+                            try {
+                                def response = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${env.EC2_PRODUCTION_IP}:${env.AWS_PROD_PORT}", returnStdout: true).trim()
+                                if (response == "200") {
+                                    echo "Application is up and running on Production EC2!"
+                                } else {
+                                    error "Application health check failed on Production EC2. HTTP response: ${response}"
+                                }
+                            } catch (Exception e) {
+                                currentBuild.result = 'FAILURE'
+                                error "Failed on stage('Health Check on Production EC2'): ${e.message}"
+                            }
+                        }
+                    }
+                }
+
+
+    // stages
+    }
 
     post {
             success {
@@ -187,5 +317,7 @@ EOT
                sh 'docker logout'
             }
         }
+
+// pipeline
 }
 
