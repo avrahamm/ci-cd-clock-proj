@@ -78,182 +78,100 @@ pipeline {
             }
         }
 
-        stage('Git Clone Repo') {
+
+        stage('Deploy and Test on EC2') {
             steps {
                 script {
-                    try {
-                        echo 'Git Clone Repo'
-                        git branch: 'main',
-                            url: "${env.CLOCK_PROJ_GIT_REPO_URL}",
-                            credentialsId: "${env.GIT_CREDENTIALS_ID}"
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error("Failed stage('Set Git Commit Hash'): ${e.message}")
-                    }
-                }
-            }
-        }
+                    withCredentials([
+                        usernamePassword(credentialsId: env.GIT_CREDENTIALS_ID, usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD'),
+                        usernamePassword(credentialsId: env.DOCKER_HUB_CREDENTIALS_ID, usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')
+                    ]) {
+                        withAWS(credentials: env.AWS_CREDENTIALS_ID, region: env.AWS_REGION) {
+                            sshagent(credentials: [env.SSH_KEY_ID]) {
+                                sh """
+                                    ssh -o StrictHostKeyChecking=no ${env.EC2_USER}@${env.EC2_IP} << 'EOT'
+        set -ex
+        # Export credentials as environment variables
+        export GIT_USERNAME='${GIT_USERNAME}'
+        export GIT_PASSWORD='${GIT_PASSWORD}'
+        export DOCKER_USERNAME='${DOCKER_USERNAME}'
+        export DOCKER_PASSWORD='${DOCKER_PASSWORD}'
 
-        stage('Set Git Commit Hash') {
-            steps {
-                script {
-                    try {
-                        env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                        echo "Short commit hash: ${env.GIT_COMMIT_SHORT}"
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error("Failed stage('Set Git Commit Hash'): ${e.message}")
-                    }
-                }
-            }
-        }
+        # Clone Git repo using credentials
+        rm -rf clock-project || true
+        git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@${env.CLOCK_PROJ_GIT_REPO_URL.replace('https://', '')} clock-project
+        cd clock-project
 
-        stage('Login to Docker Hub') {
-            steps {
-                script {
-                    try {
-                        withCredentials([usernamePassword(
-                            credentialsId: env.DOCKER_HUB_CREDENTIALS_ID,
-                            usernameVariable: 'DOCKER_USERNAME',
-                            passwordVariable: 'DOCKER_PASSWORD'
-                          )]) {
-                            sh 'echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin'
-                        }
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error("Failed stage('Login to Docker Hub'): ${e.message}")
-                    }
-                }
-            }
-        }
+        # Set GIT_COMMIT_SHORT (with error checking)
+        GIT_COMMIT_SHORT=\$(git rev-parse --short HEAD)
+        echo "GIT_COMMIT_SHORT = \${GIT_COMMIT_SHORT}"
 
-        stage('Tester stage') {
-            steps {
-                script {
-                    try {
-                        echo 'Build docker images, run container and test'
-                        sh """
-                            docker --debug build --target tester \
-                                   -t ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT} .
-                            docker run --rm \
-                                -d --name ${env.TEST_CONTAINER_NAME} \
-                                -e WORKDIR=${env.WORKDIR} \
-                                -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \
-                                -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \
-                                -e OUTPUT_FILE_PATH=${env.TEST_OUTPUT_FILE_PATH} \
-                                -p ${env.PUBLISHED_TEST_APP_PORT}:${env.CONTAINER_APP_PORT}  \
-                                ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT}
-                        """
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error("Failed stage('Tester stage'): ${e.message}")
-                    }
-                }
-            }
-        }
+        # Login to Docker Hub
+        echo \${DOCKER_PASSWORD} | docker login -u \${DOCKER_USERNAME} --password-stdin
 
-        stage('Verify Production Image') {
-            steps {
-                script {
-                    try {
-                        echo 'Tests passed. Verify Production Image stage - build docker images and run container'
-                        sh """
-                            docker --debug build --target production \
-                                   -t ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT} .
-                            docker run --rm \
-                                -d --name ${env.PROD_CONTAINER_NAME} \
-                                -e WORKDIR=${env.WORKDIR} \
-                                -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \
-                                -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \
-                                -e OUTPUT_FILE_PATH=${env.PROD_OUTPUT_FILE_PATH} \
-                                -p ${env.PUBLISHED_PROD_APP_PORT}:${env.CONTAINER_APP_PORT}  \
-                                ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
-                           """
-                        // Optional: Add a small delay to ensure everything is running
-                        sleep 5
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error("Failed stage('Verify Production Image'): ${e.message}")
-                    }
-                }
-            }
-        }
+        # Tester stage
+        docker build --target tester -t ${env.IMAGE_NAME}:test-\${GIT_COMMIT_SHORT} .
+        docker run --rm \\
+            -d --name ${env.TEST_CONTAINER_NAME} \\
+            -e WORKDIR=${env.WORKDIR} \\
+            -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \\
+            -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \\
+            -e OUTPUT_FILE_PATH=${env.TEST_OUTPUT_FILE_PATH} \\
+            -p ${env.PUBLISHED_TEST_APP_PORT}:${env.CONTAINER_APP_PORT} \\
+            ${env.IMAGE_NAME}:test-\${GIT_COMMIT_SHORT}
 
+        # Verify Production Image
+        docker build --target production -t ${env.IMAGE_NAME}:production-\${GIT_COMMIT_SHORT} .
+        docker run --rm \\
+            -d --name ${env.PROD_CONTAINER_NAME} \\
+            -e WORKDIR=${env.WORKDIR} \\
+            -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \\
+            -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \\
+            -e OUTPUT_FILE_PATH=${env.PROD_OUTPUT_FILE_PATH} \\
+            -p ${env.AWS_PROD_PORT}:${env.CONTAINER_APP_PORT} \\
+            ${env.IMAGE_NAME}:production-\${GIT_COMMIT_SHORT}
 
-        stage('Push docker images') {
-            steps {
-                script {
-                    try {
-                        echo 'Push test and production docker images'
-                        sh """
-                            docker images | grep clock || true
-                            # docker image push ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT}
-                            # docker image push ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
-                        """
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error "Failed on stage('Push docker images') : ${e.message}"
-                    }
-                }
-            }
-        }
+        sleep 10
 
-        stage('Cleaning') {
-            steps {
-                script {
-                    try {
-                        echo 'Cleaning....'
-                        sh """
-                           docker stop ${env.TEST_CONTAINER_NAME} || true
-                           docker stop ${env.PROD_CONTAINER_NAME} || true
-                           docker rmi ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT} || true
-                           docker rmi ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT} || true
-                           # Prune any dangling images
-                           docker image prune -f || true
-                        """
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error "Failed on stage('Cleaning'): ${e.message}"
-                    }
-                }
-            }
-        }
+        # List Docker images for verification
+        # echo "Docker images:"
+        # docker images
 
-        stage('Deploy to EC2') {
-            steps {
-                script {
-                    // AWS CLI commands will run in the Jenkins container
-                    withAWS(credentials: env.AWS_CREDENTIALS_ID, region: env.AWS_REGION) {
-                        // SSH into EC2 and deploy
-                        sshagent(credentials: [env.SSH_KEY_ID]) {
-                            sh """
-                                ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_IP} '
-                                    # Install Docker if not already installed
-                                    if ! command -v docker &> /dev/null; then
-                                        sudo yum update -y
-                                        sudo yum install -y docker
-                                        sudo systemctl start docker
-                                        sudo systemctl enable docker
-                                        sudo usermod -aG docker ec2-user
-                                    fi
+        # Logout from Docker Hub
+        docker logout
 
-                                    # Pull and run the new Docker image
-                                    docker pull ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
-                                    docker stop ${env.PROD_CONTAINER_NAME} || true
-                                    docker rm ${env.PROD_CONTAINER_NAME} || true
-                                    docker run -d --name ${env.PROD_CONTAINER_NAME} -p ${env.AWS_PROD_PORT}:${env.CONTAINER_APP_PORT} ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
-
-                                '
-                            """
+        # Clear sensitive environment variables
+        unset GIT_USERNAME GIT_PASSWORD DOCKER_USERNAME DOCKER_PASSWORD
+EOT
+                                """
+                            }
                         }
                     }
                 }
             }
-
         }
+
+
+        stage('Health Check on EC2') {
+            steps {
+                script {
+                    try {
+                        def response = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${env.EC2_IP}:${env.AWS_PROD_PORT}", returnStdout: true).trim()
+                        if (response == "200") {
+                            echo "Application is up and running on EC2!"
+                        } else {
+                            error "Application health check failed on EC2. HTTP response: ${response}"
+                        }
+                    } catch (Exception e) {
+                        currentBuild.result = 'FAILURE'
+                        error "Failed on stage('Health Check on EC2'): ${e.message}"
+                    }
+                }
+            }
+        }
+
 
     }
-
 
 
     post {
