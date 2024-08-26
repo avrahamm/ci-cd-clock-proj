@@ -98,17 +98,17 @@ pipeline {
         export DOCKER_USERNAME='${DOCKER_USERNAME}'
         export DOCKER_PASSWORD='${DOCKER_PASSWORD}'
 
+        # Login to Docker
+        echo "\${DOCKER_PASSWORD}" | docker login -u "\${DOCKER_USERNAME}" --password-stdin
+
         # Clone Git repo using credentials
         rm -rf clock-project || true
-        git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@${env.CLOCK_PROJ_GIT_REPO_URL.replace('https://', '')} clock-project
+        git clone https://\${GIT_USERNAME}:\${GIT_PASSWORD}@${env.CLOCK_PROJ_GIT_REPO_URL.replace('https://', '')} clock-project
         cd clock-project
 
-        # Set GIT_COMMIT_SHORT (with error checking)
+        # Set GIT_COMMIT_SHORT
         GIT_COMMIT_SHORT=\$(git rev-parse --short HEAD)
         echo "GIT_COMMIT_SHORT = \${GIT_COMMIT_SHORT}"
-
-        # Login to Docker Hub
-        echo \${DOCKER_PASSWORD} | docker login -u \${DOCKER_USERNAME} --password-stdin
 
         # Tester stage
         docker build --target tester -t ${env.IMAGE_NAME}:test-\${GIT_COMMIT_SHORT} .
@@ -200,14 +200,14 @@ EOT
            echo "Docker images:"
            docker images
 
-           docker stop ${env.TEST_CONTAINER_NAME} || true
+           # docker stop ${env.TEST_CONTAINER_NAME} || true
            docker stop ${env.PROD_CONTAINER_NAME} || true
            docker rmi ${env.IMAGE_NAME}:test-\${GIT_COMMIT_SHORT} || true
            docker rmi ${env.IMAGE_NAME}:production-\${GIT_COMMIT_SHORT} || true
-           # Prune any dangling images
-           docker image prune -f || true
 
-           # Clear sensitive environment variables
+           # Clean up Docker resources
+           docker system prune -af
+           docker volume prune -f
 EOT
                                 """
                             }
@@ -245,10 +245,8 @@ EOT
             GIT_COMMIT_SHORT=\$(git rev-parse --short HEAD)
             echo "GIT_COMMIT_SHORT = \${GIT_COMMIT_SHORT}"
 
-            # Login to Docker Hub
+            # Login to Docker
             echo \${DOCKER_PASSWORD} | docker login -u \${DOCKER_USERNAME} --password-stdin
-
-
 
             # Run Production Image
             docker run --rm \\
