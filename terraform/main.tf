@@ -1,12 +1,18 @@
 # Define variables for instance names
-variable "instance_names" {
-  description = "Names for the EC2 instances"
-  type        = list(string)
-  default     = ["clock-test", "clock-prod"]
+variable "instance_name" {
+  description = "Name tag for the EC2 instance"
+  type        = string
+  default     = "clock-test"  # Default value if not provided
+}
+
+variable "aws_region" {
+  description = "AWS region for resources"
+  type        = string
+  default = "eu-central-1"
 }
 
 provider "aws" {
-  region = "eu-central-1"
+  region = var.aws_region
 }
 
 data "aws_ami" "amazon_linux_2023" {
@@ -28,8 +34,7 @@ data "aws_security_group" "web_service_sg" {
   name = "WebServiceSG"
 }
 
-resource "aws_instance" "clock_instances" {
-  count         = length(var.instance_names)
+resource "aws_instance" "clock_instance" {
   ami           = data.aws_ami.amazon_linux_2023.id
   instance_type = "t2.micro"
   key_name      = "clock1"
@@ -71,12 +76,14 @@ resource "aws_instance" "clock_instances" {
   )
 
   tags = {
-    Name = var.instance_names[count.index]
+    Name = var.instance_name
   }
 }
 
-output "instance_public_ips" {
-  value = {
-    for i, instance in aws_instance.clock_instances : var.instance_names[i] => instance.public_ip
-  }
+output "instance_public_ip" {
+  value = aws_instance.clock_instance.public_ip
+}
+
+output "instance_id" {
+  value = aws_instance.clock_instance.id
 }
