@@ -53,6 +53,9 @@ resource "aws_instance" "clock_instance" {
     sudo usermod -aG docker ec2-user
     # Install Git
     sudo yum install -y git
+    # Create Docker admin directory and set appropriate ownership
+    mkdir -p /home/ec2-user/.docker
+    chown -R ec2-user:ec2-user /home/ec2-user/.docker
     # Reboot to ensure all changes take effect
     sudo reboot
   EOF
