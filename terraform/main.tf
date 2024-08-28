@@ -67,6 +67,14 @@ resource "aws_instance" "clock_instance" {
   }
 }
 
+# Previous parts of the script remain unchanged
+
+data "aws_instance" "clock_instance_status" {
+  instance_id = aws_instance.clock_instance.id
+
+  depends_on = [aws_instance.clock_instance]
+}
+
 output "instance_public_ip" {
   value = aws_instance.clock_instance.public_ip
 }
@@ -78,4 +86,14 @@ output "instance_id" {
 output "instance_state" {
   description = "The state of the EC2 instance"
   value       = aws_instance.clock_instance.instance_state
+}
+
+output "instance_status" {
+  description = "Detailed status of the EC2 instance"
+  value = {
+    state                 = data.aws_instance.clock_instance_status.instance_state
+    availability_zone     = data.aws_instance.clock_instance_status.availability_zone
+    public_ip             = data.aws_instance.clock_instance_status.public_ip
+    private_ip            = data.aws_instance.clock_instance_status.private_ip
+  }
 }
