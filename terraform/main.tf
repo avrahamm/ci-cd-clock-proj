@@ -56,8 +56,8 @@ resource "aws_instance" "clock_instance" {
     # Create Docker admin directory and set appropriate ownership
     mkdir -p /home/ec2-user/.docker
     chown -R ec2-user:ec2-user /home/ec2-user/.docker
-    # Reboot to ensure all changes take effect
-    sudo reboot
+    # Signal that the instance is ready
+    touch /tmp/instance_ready
   EOF
   )
 
