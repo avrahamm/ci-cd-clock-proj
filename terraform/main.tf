@@ -53,25 +53,6 @@ resource "aws_instance" "clock_instance" {
     sudo usermod -aG docker ec2-user
     # Install Git
     sudo yum install -y git
-    # Create Docker login script
-    mkdir -p /home/ec2-user/.docker
-    cat << EOT > /home/ec2-user/.docker/docker_login.sh
-    #!/bin/bash
-    set -ex
-    echo "$${DOCKER_PASSWORD}" | docker login -u "$${DOCKER_USERNAME}" --password-stdin
-    EOT
-    chmod +x /home/ec2-user/.docker/docker_login.sh
-    # Create Docker cleanup script
-    cat << EOT > /home/ec2-user/.docker/docker_cleanup.sh
-    #!/bin/bash
-    docker system prune -af
-    docker volume prune -f
-    EOT
-    chmod +x /home/ec2-user/.docker/docker_cleanup.sh
-    # Set appropriate ownership
-    chown -R ec2-user:ec2-user /home/ec2-user/.docker
-    # Reboot to ensure all changes take effect
-    sudo reboot
   EOF
   )
 
