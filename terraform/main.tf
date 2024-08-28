@@ -53,6 +53,8 @@ resource "aws_instance" "clock_instance" {
     sudo usermod -aG docker ec2-user
     # Install Git
     sudo yum install -y git
+    # Reboot to ensure all changes take effect
+    sudo reboot
   EOF
   )
 
