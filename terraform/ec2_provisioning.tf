@@ -1,5 +1,5 @@
 data "aws_iam_instance_profile" "existing_profile" {
-  name = "ec2_profile"
+  name = "clock_ec2_profile"
 }
 
 data "aws_ami" "amazon_linux_2023" {
