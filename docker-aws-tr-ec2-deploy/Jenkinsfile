@@ -37,8 +37,9 @@ pipeline {
                 script {
                     try {
                         def dockerEnvProps = readProperties file: env.CLOCK_PROJ_DOCKER_ENV_FILE_PATH
-                        env.CHROME_VERSION = dockerEnvProps.CHROME_VERSION
-                        env.CHROME_DRIVER_VERSION = dockerEnvProps.CHROME_DRIVER_VERSION
+
+                        env.DOCKER_REGISTRY = dockerEnvProps.DOCKER_REGISTRY
+
                         env.CHROME_DRIVER_PATH = dockerEnvProps.CHROME_DRIVER_PATH
                         env.PYTHONPATH = dockerEnvProps.PYTHONPATH
                         env.SELENIUM_HEADLESS_MODE_DISPLAY_PORT = dockerEnvProps.SELENIUM_HEADLESS_MODE_DISPLAY_PORT
@@ -249,8 +250,8 @@ pipeline {
         export DOCKER_USERNAME='${DOCKER_USERNAME}'
         export DOCKER_PASSWORD='${DOCKER_PASSWORD}'
 
-        # Login to Docker
-        echo "\${DOCKER_PASSWORD}" | docker login -u "\${DOCKER_USERNAME}" --password-stdin
+        # Authenticate Docker to ECR (no explicit login required with IAM roles)
+        aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 
         # Clone Git repo using credentials
         rm -rf clock-project || true
@@ -294,8 +295,8 @@ pipeline {
         docker image push ${env.IMAGE_NAME}:test-\${GIT_COMMIT_SHORT}
         docker image push ${env.IMAGE_NAME}:production-\${GIT_COMMIT_SHORT}
 
-        # Logout from Docker Hub
-        docker logout
+        # Logout from Docker registry
+        docker logout ${env.DOCKER_REGISTRY}
 
         # Clear sensitive environment variables
         unset GIT_USERNAME GIT_PASSWORD DOCKER_USERNAME DOCKER_PASSWORD
@@ -374,8 +375,8 @@ EOT
             GIT_COMMIT_SHORT=\$(git rev-parse --short HEAD)
             echo "GIT_COMMIT_SHORT = \${GIT_COMMIT_SHORT}"
 
-            # Login to Docker
-            echo \${DOCKER_PASSWORD} | docker login -u \${DOCKER_USERNAME} --password-stdin
+            # Authenticate Docker to ECR (no explicit login required with IAM roles)
+            aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 
             # Run Production Image
             docker run --rm \\
@@ -395,8 +396,8 @@ EOT
             echo "Docker images:"
             docker images
 
-            # Logout from Docker Hub
-            docker logout
+            # Logout from Docker registry
+            docker logout ${env.DOCKER_REGISTRY}
 
             # Clear sensitive environment variables
             unset GIT_USERNAME GIT_PASSWORD DOCKER_USERNAME DOCKER_PASSWORD
