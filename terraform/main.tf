@@ -34,12 +34,73 @@ data "aws_security_group" "web_service_sg" {
   name = "WebServiceSG"
 }
 
+# Create IAM role for EC2
+resource "aws_iam_role" "ec2_ecr_role" {
+  name = "ec2_ecr_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# Create IAM policy for ECR access
+resource "aws_iam_policy" "ecr_access_policy" {
+  name        = "ecr_access_policy"
+  path        = "/"
+  description = "IAM policy for ECR access"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr-public:GetAuthorizationToken",
+          "ecr-public:BatchCheckLayerAvailability",
+          "ecr-public:GetRepositoryPolicy",
+          "ecr-public:DescribeRepositories",
+          "ecr-public:DescribeImages",
+          "ecr-public:InitiateLayerUpload",
+          "ecr-public:UploadLayerPart",
+          "ecr-public:CompleteLayerUpload",
+          "ecr-public:PutImage",
+          "sts:GetServiceBearerToken"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Attach the policy to the role
+resource "aws_iam_role_policy_attachment" "ecr_policy_attach" {
+  role       = aws_iam_role.ec2_ecr_role.name
+  policy_arn = aws_iam_policy.ecr_access_policy.arn
+}
+
+# Create an instance profile
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "ec2_profile"
+  role = aws_iam_role.ec2_ecr_role.name
+}
+
 resource "aws_instance" "clock_instance" {
   ami           = data.aws_ami.amazon_linux_2023.id
   instance_type = "t2.micro"
   key_name      = "clock1"
 
   vpc_security_group_ids = [data.aws_security_group.web_service_sg.id]
+
+  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
 
   user_data = base64encode(<<-EOF
     #!/bin/bash
@@ -53,6 +114,20 @@ resource "aws_instance" "clock_instance" {
     sudo usermod -aG docker ec2-user
     # Install Git
     sudo yum install -y git
+
+    # Install AWS CLI v2
+    sudo yum install -y unzip
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip awscliv2.zip
+    sudo ./aws/install
+    rm -rf aws awscliv2.zip
+
+    # Install the Amazon ECR Credential Helper
+    sudo yum install -y amazon-ecr-credential-helper
+
+    # Configure Docker to use the ECR Credential Helper
+    mkdir -p /home/ec2-user/.docker
+
     # Create Docker admin directory and set appropriate ownership
     mkdir -p /home/ec2-user/.docker
     chown -R ec2-user:ec2-user /home/ec2-user/.docker
