@@ -54,8 +54,6 @@ resource "aws_instance" "clock_instance" {
     # Signal that the instance is ready
     touch /tmp/instance_ready
     chown ec2-user:ec2-user /tmp/instance_ready
-    # Reboot to ensure all changes take effect
-    sudo reboot
   EOF
   )
 
