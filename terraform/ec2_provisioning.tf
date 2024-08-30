@@ -50,6 +50,9 @@ resource "aws_instance" "clock_instance" {
     sudo yum install -y amazon-ecr-credential-helper
 
     # Ensure AWS CLI is configured to use instance profile
+    mkdir -p /home/ec2-user/.aws
+    chown -R ec2-user:ec2-user /home/ec2-user/.aws
+
     echo '[default]' > /home/ec2-user/.aws/config
     echo 'region = ${var.aws_region}' >> /home/ec2-user/.aws/config
     echo 'credential_source = Ec2InstanceMetadata' >> /home/ec2-user/.aws/config
