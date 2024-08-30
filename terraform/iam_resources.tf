@@ -10,6 +10,10 @@ data "aws_iam_policy" "clock_ecr_access_policy" {
   name = "clock_ecr_access_policy"
 }
 
+data "aws_iam_policy" "clock_ecr_public_auth_token_policy" {
+  name = "clock_ecr_public_auth_token_policy"
+}
+
 # Data source for the existing IAM instance profile
 data "aws_iam_instance_profile" "clock_ec2_profile" {
   name = "clock_ec2_profile"
@@ -28,6 +32,10 @@ output "role_arn" {
 
 output "policy_arn" {
   value = data.aws_iam_policy.clock_ecr_access_policy.arn
+}
+
+output "clock_ecr_public_auth_token_policy_arn" {
+  value = data.aws_iam_policy.clock_ecr_public_auth_token_policy.arn
 }
 
 output "instance_profile_arn" {
