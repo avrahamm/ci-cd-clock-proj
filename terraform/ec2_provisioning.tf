@@ -40,7 +40,7 @@ resource "aws_instance" "clock_instances" {
     sudo systemctl enable docker
     sudo usermod -aG docker ec2-user
     # Install Git
-    sudo yum install -y git
+    sudo yum install -y git jq
     # Install AWS CLI v2
     sudo yum install -y unzip
     curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
