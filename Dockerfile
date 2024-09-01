@@ -48,17 +48,17 @@ RUN apt update && \
     apt install -y nginx
 
 # Install Chrome (specify the version explicitly)
-RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-    sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list' && \
-    apt update && \
-    apt install -y google-chrome-stable && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install ChromeDriver (specify the version explicitly)
-RUN wget -O /tmp/chromedriver.zip https://storage.googleapis.com/chrome-for-testing-public/${CHROME_DRIVER_VERSION}/linux64/chromedriver-linux64.zip && \
-    unzip /tmp/chromedriver.zip -d . && \
-    mv ./chromedriver-linux64/chromedriver ${CHROME_DRIVER_PATH} && \
-    rm /tmp/chromedriver.zip && rm -rf chromedriver-linux64
+#RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+#    sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list' && \
+#    apt update && \
+#    apt install -y google-chrome-stable && \
+#    rm -rf /var/lib/apt/lists/*
+#
+## Install ChromeDriver (specify the version explicitly)
+#RUN wget -O /tmp/chromedriver.zip https://storage.googleapis.com/chrome-for-testing-public/${CHROME_DRIVER_VERSION}/linux64/chromedriver-linux64.zip && \
+#    unzip /tmp/chromedriver.zip -d . && \
+#    mv ./chromedriver-linux64/chromedriver ${CHROME_DRIVER_PATH} && \
+#    rm /tmp/chromedriver.zip && rm -rf chromedriver-linux64
 
 COPY nginx-tester.conf /etc/nginx/nginx.conf
 RUN chown -R myuser:myuser /var/log/nginx /var/lib/nginx /var/run /run /usr/share/nginx/html ${WORKDIR} && \
