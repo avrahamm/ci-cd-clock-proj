@@ -32,4 +32,4 @@ sleep 30
 # Stop the application and Nginx
 echo "Stopping the application and Nginx..."
 kill %1
-sudo nginx -s stop
+nginx -s stop

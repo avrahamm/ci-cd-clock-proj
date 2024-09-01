@@ -26,13 +26,6 @@ def write_time_output(current_time, output_file_path):
     except IOError as e:
         logging.error(f"Error writing to file: {e}")
 
-def get_ec2_instance_ip():
-    try:
-        response = requests.get('http://169.254.169.254/latest/meta-data/public-ipv4', timeout=2)
-        return response.text
-    except requests.RequestException:
-        return "Unable to retrieve EC2 IP"
-
 
 def main():
     time_format = os.getenv('TIME_FORMAT', "%Y-%m-%d %H:%M:%S")
