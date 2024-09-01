@@ -40,6 +40,7 @@ pipeline {
 
                         env.DOCKER_REGISTRY = dockerEnvProps.DOCKER_REGISTRY
 
+                        env.CHROME_DRIVER_VERSION = dockerEnvProps.CHROME_DRIVER_VERSION
                         env.CHROME_DRIVER_PATH = dockerEnvProps.CHROME_DRIVER_PATH
                         env.PYTHONPATH = dockerEnvProps.PYTHONPATH
                         env.SELENIUM_HEADLESS_MODE_DISPLAY_PORT = dockerEnvProps.SELENIUM_HEADLESS_MODE_DISPLAY_PORT
@@ -250,6 +251,20 @@ pipeline {
         export DOCKER_USERNAME='${DOCKER_USERNAME}'
         export DOCKER_PASSWORD='${DOCKER_PASSWORD}'
 
+
+        # Print AWS identity information
+        echo "AWS Identity:"
+        aws sts get-caller-identity
+
+        # Print IAM role information
+        echo "IAM Role:"
+        curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/
+
+        # Print AWS CLI version
+        echo "AWS CLI version:"
+        aws --version
+
+
         # Authenticate Docker to ECR (no explicit login required with IAM roles)
         aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 
@@ -374,6 +389,19 @@ EOT
             # Set GIT_COMMIT_SHORT (with error checking)
             GIT_COMMIT_SHORT=\$(git rev-parse --short HEAD)
             echo "GIT_COMMIT_SHORT = \${GIT_COMMIT_SHORT}"
+
+            # Print AWS identity information
+            echo "AWS Identity:"
+            aws sts get-caller-identity
+
+            # Print IAM role information
+            echo "IAM Role:"
+            curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/
+
+            # Print AWS CLI version
+            echo "AWS CLI version:"
+            aws --version
+
 
             # Authenticate Docker to ECR (no explicit login required with IAM roles)
             aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
