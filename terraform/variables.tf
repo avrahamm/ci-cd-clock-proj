@@ -1,9 +1,3 @@
-# variable "instance_name" {
-#   description = "Name tag for the EC2 instance"
-#   type        = string
-#   default     = "clock-test"
-# }
-
 # Define variables for instance names
 variable "instance_names" {
   description = "Names for the EC2 instances"
