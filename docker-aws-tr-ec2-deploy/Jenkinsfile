@@ -148,10 +148,13 @@ pipeline {
             steps {
                 script {
                     echo "Waiting for instance ${env.EC2_TEST_INSTANCE_ID} to be ready..."
+                    // It takes at least 120 seconds
+                    sleep 120
 
                     def maxAttempts = 30
                     def attemptCount = 0
                     def instanceReady = false
+
 
                     while (!instanceReady && attemptCount < maxAttempts) {
                         sleep 20 // Wait for 20 seconds between checks

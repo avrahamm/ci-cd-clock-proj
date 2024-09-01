@@ -6,22 +6,18 @@
 # #
 # #
 # # First, plan the changes
-# #  terraform plan \
-# #  -target=aws_iam_role.clock_ec2_ecr_role \
-# #  -target=aws_iam_policy.clock_ecr_access_policy \
-# #  -target=aws_iam_role_policy_attachment.clock_ecr_policy_attach \
-# #  -target=aws_iam_instance_profile.clock_ec2_profile \
-# #  -target=aws_iam_policy.clock_ecr_public_auth_token_policy \
-# #  -target=aws_iam_role_policy_attachment.clock_ecr_public_auth_token_policy_attach
+# # terraform plan \
+# # -target=aws_iam_role.clock_ec2_ecr_role \
+# # -target=aws_iam_policy.clock_ecr_access_policy \
+# # -target=aws_iam_role_policy_attachment.clock_ecr_policy_attach \
+# # -target=aws_iam_instance_profile.clock_ec2_profile
 # #
 # # # If the plan looks good, apply the changes
-# #  terraform apply \
-# #  -target=aws_iam_role.clock_ec2_ecr_role \
-# #  -target=aws_iam_policy.clock_ecr_access_policy \
-# #  -target=aws_iam_role_policy_attachment.clock_ecr_policy_attach \
-# #  -target=aws_iam_instance_profile.clock_ec2_profile \
-# #  -target=aws_iam_policy.clock_ecr_public_auth_token_policy \
-# #  -target=aws_iam_role_policy_attachment.clock_ecr_public_auth_token_policy_attach
+# # terraform apply \
+# # -target=aws_iam_role.clock_ec2_ecr_role \
+# # -target=aws_iam_policy.clock_ecr_access_policy \
+# # -target=aws_iam_role_policy_attachment.clock_ecr_policy_attach \
+# # -target=aws_iam_instance_profile.clock_ec2_profile
 #
 #
 # # IAM Role
@@ -129,31 +125,6 @@
 #   role = aws_iam_role.clock_ec2_ecr_role.name
 # }
 #
-# resource "aws_iam_policy" "clock_ecr_public_auth_token_policy" {
-#   name        = "clock_ecr_public_auth_token_policy"
-#   path        = "/"
-#   description = "IAM policy for ECR public GetAuthorizationToken"
-#
-#   policy = jsonencode({
-#     Version = "2012-10-17"
-#     Statement = [
-#       {
-#         Effect = "Allow"
-#         Action = [
-#           "ecr-public:GetAuthorizationToken",
-#           "sts:GetServiceBearerToken"
-#         ]
-#         Resource = "*"
-#       }
-#     ]
-#   })
-# }
-#
-# resource "aws_iam_role_policy_attachment" "clock_ecr_public_auth_token_policy_attach" {
-#   role       = aws_iam_role.clock_ec2_ecr_role.name
-#   policy_arn = aws_iam_policy.clock_ecr_public_auth_token_policy.arn
-# }
-#
 # # Outputs
 # output "role_arn" {
 #   value = aws_iam_role.clock_ec2_ecr_role.arn
@@ -161,10 +132,6 @@
 #
 # output "policy_arn" {
 #   value = aws_iam_policy.clock_ecr_access_policy.arn
-# }
-#
-# output "clock_ecr_public_auth_token_policy_arn" {
-#   value = aws_iam_policy.clock_ecr_public_auth_token_policy.arn
 # }
 #
 # output "instance_profile_arn" {
