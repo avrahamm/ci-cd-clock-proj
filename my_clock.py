@@ -2,6 +2,7 @@ import time
 import datetime
 import os
 import logging
+import requests
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -19,17 +20,26 @@ def write_time_output(current_time, output_file_path):
     except IOError as e:
         logging.error(f"Error writing to file: {e}")
 
+def get_ec2_instance_ip():
+    try:
+        response = requests.get('http://169.254.169.254/latest/meta-data/public-ipv4', timeout=2)
+        return response.text
+    except requests.RequestException:
+        return "Unable to retrieve EC2 IP"
+
 
 def main():
     time_format = os.getenv('TIME_FORMAT', "%Y-%m-%d %H:%M:%S")
+    ec2_ip = get_ec2_instance_ip()
     output_file_path = os.getenv('OUTPUT_FILE_PATH', "/usr/share/nginx/html/myclock.html")
     update_clock_time_interval = int(os.getenv('UPDATE_CLOCK_TIME_INTERVAL', '10'))
 
     logging.info(f"Starting clock. Output file: {output_file_path}, Update interval: {update_clock_time_interval}s")
 
     while True:
-        current_time = get_current_time(time_format)
-        write_time_output(current_time, output_file_path)
+        current_time = get_current_time(time_format)        
+        output_string = (f"Current time: {current_time} - Running on EC2 IP: {ec2_ip}")
+        write_time_output(output_string, output_file_path)
         time.sleep(update_clock_time_interval)
 
 
