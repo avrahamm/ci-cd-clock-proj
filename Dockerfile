@@ -29,7 +29,7 @@ RUN pip -v install --user pip && \
 
 
 # Test stage
-FROM builder AS tester
+FROM builder AS test-preparation
 
 USER root
 
@@ -75,7 +75,9 @@ RUN pip -v install --user pip && \
     pip -v install -r requirements-test.txt
 
 
-# Switch back to non-root user
+FROM test-preparation AS tester
+
+# Switch to non-root user
 USER myuser
 
 # Copy code and configuration files
