@@ -11,6 +11,10 @@ pipeline {
         JENKINS_ENV_FILE_PATH = "${env.JENKINS_ENV_FILE_PATH}"
 
         EC2_PRODUCTION_BASE_NAME = "clock-production-${env.BUILD_NUMBER}"
+
+        // To reset Route53 domain to new ec2 production instance.
+        HOSTED_ZONE_ID = 'Z06214392XWEU4N3JH2I6'
+        DOMAIN_NAME = 'clock.avrahammlabs.net'
     }
 
     stages {
@@ -74,8 +78,8 @@ pipeline {
                         def awsEnvProps = readProperties file: env.CLOCK_PROJ_AWS_ENV_FILE_PATH
                         env.AWS_CREDENTIALS_ID = awsEnvProps.AWS_CREDENTIALS_ID
                         env.AWS_REGION = awsEnvProps.AWS_REGION
-//                         env.EC2_TEST_IP = awsEnvProps.EC2_TEST_IP
-//                         env.EC2_PRODUCTION_IP = awsEnvProps.EC2_PRODUCTION_IP
+                        env.HOSTED_ZONE_ID = awsEnvProps.HOSTED_ZONE_ID
+                        env.DOMAIN_NAME    = awsEnvProps.DOMAIN_NAME
                         env.AWS_PROD_PORT = awsEnvProps.AWS_PROD_PORT
                         env.EC2_USER = awsEnvProps.EC2_USER
                         env.SSH_KEY_ID = awsEnvProps.SSH_KEY_ID
@@ -410,6 +414,43 @@ EOT
              }
          }
 
+         stage('Update Route 53 Record') {
+             steps {
+                 script {
+                     withAWS(credentials: env.AWS_CREDENTIALS_ID, region: env.AWS_REGION) {
+                         def changeJson = """
+                         {
+                             "Changes": [
+                                 {
+                                     "Action": "UPSERT",
+                                     "ResourceRecordSet": {
+                                         "Name": "${DOMAIN_NAME}",
+                                         "Type": "A",
+                                         "TTL": 300,
+                                         "ResourceRecords": [
+                                             {
+                                                 "Value": "${env.EC2_PRODUCTION_IP}"
+                                             }
+                                         ]
+                                     }
+                                 }
+                             ]
+                         }
+                         """
+
+                         writeFile file: 'route53-change-batch.json', text: changeJson
+
+                         sh """
+                              aws route53 change-resource-record-sets \
+                                --hosted-zone-id ${HOSTED_ZONE_ID} \
+                                --change-batch file://route53-change-batch.json
+                         """
+
+                         echo "Updated Route 53 record for ${DOMAIN_NAME} to point to ${env.EC2_PRODUCTION_IP}"
+                     }
+                 }
+             }
+         }
 
     // stages
     }
