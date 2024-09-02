@@ -21,14 +21,12 @@ data "aws_security_group" "web_service_sg" {
   name = "WebServiceSG"
 }
 
-resource "aws_instance" "clock_instances" {
-  count         = length(var.instance_names)
-  ami           = data.aws_ami.amazon_linux_2023.id
-  instance_type = "t2.micro"
-  key_name      = "clock1"
+resource "aws_instance" "clock_instance" {
+  ami                    = data.aws_ami.amazon_linux_2023.id
+  instance_type          = "t2.micro"
+  key_name               = "clock1"
   iam_instance_profile   = data.aws_iam_instance_profile.existing_profile.name
   vpc_security_group_ids = [data.aws_security_group.web_service_sg.id]
-
 
   user_data = base64encode(<<-EOF
     #!/bin/bash
@@ -71,6 +69,6 @@ resource "aws_instance" "clock_instances" {
   )
 
   tags = {
-    Name = var.instance_names[count.index]
+    Name = var.instance_name
   }
 }
