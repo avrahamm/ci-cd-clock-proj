@@ -28,6 +28,7 @@ pipeline {
                         env.CLOCK_PROJ_GIT_REPO_URL = props.CLOCK_PROJ_GIT_REPO_URL
                         env.CLOCK_PROJ_DOCKER_ENV_FILE_PATH = props.CLOCK_PROJ_DOCKER_ENV_FILE_PATH
                         env.CLOCK_PROJ_AWS_ENV_FILE_PATH = props.CLOCK_PROJ_AWS_ENV_FILE_PATH
+                        env.CLOCK_PROJ_PERSISTENT_VARS_FILE = props.CLOCK_PROJ_PERSISTENT_VARS_FILE
                         env.GIT_CREDENTIALS_ID = props.GIT_CREDENTIALS_ID
                     } catch (Exception e) {
                         currentBuild.result = 'FAILURE'
@@ -88,6 +89,19 @@ pipeline {
                         currentBuild.result = 'FAILURE'
                         error("Failed stage('Load AWS Environment Variables'): ${e.message}")
                     }
+                }
+            }
+        }
+
+        stage('Read Persistent Variables') {
+            steps {
+                script {
+                    def props = readProperties file: env.CLOCK_PROJ_PERSISTENT_VARS_FILE
+                    // Convert the read properties to a regular Groovy map
+                    // TODO! Probably to delete previous tr workspace
+                    // after successful deployment
+                    persistentVars = props.collectEntries { key, value -> [key, value] }
+                    echo "Loaded persistent variables: ${persistentVars}"
                 }
             }
         }
@@ -447,6 +461,18 @@ EOT
                          """
 
                          echo "Updated Route 53 record for ${DOMAIN_NAME} to point to ${env.EC2_PRODUCTION_IP}"
+
+                         // Update the persistent variables
+                         // TODO! Probably to delete tr workspace after next deployment
+                         persistentVars.LAST_DEPLOYED_WORKSPACE = env.WORKSPACE
+                         persistentVars.LAST_DEPLOYED_IP = env.EC2_PRODUCTION_IP
+
+                         // Write all variables back to the file
+                         def persistentVarsContent = persistentVars.collect { key, value -> "${key}=${value}" }.join('\n')
+                         writeFile file: env.CLOCK_PROJ_PERSISTENT_VARS_FILE, text: persistentVarsContent
+
+                         echo "Updated persistent variables file with new workspace ${env.WORKSPACE} and IP ${env.EC2_PRODUCTION_IP}"
+
                      }
                  }
              }
