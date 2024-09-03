@@ -1,6 +1,6 @@
 - The clock app
 There is a simple python web app shows current time,
-at http://host:port/myclock.html
+at [http://host:port/myclock.html](http://clock.avrahammlabs.net/)
 
 - Module tests and E2E tests.
 There are simple pytest and selenium e2e tests
