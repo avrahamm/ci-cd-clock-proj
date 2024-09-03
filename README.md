@@ -4,8 +4,8 @@ at http://host:port/myclock.html
 I run it on Jenkins server by Pipeline Job runs Jenkinsfile.
 To avoid storing sensitive info i Github repository,
 Jenkins server global environment variable JENKINS_ENV_FILE_PATH is used.
-It points to directory on Jenkis server contains 2 files,
-docker.env.properties and jenkins.env.properties.
+It points to directory on Jenkis server contains 4 files,
+jenkins.env.properties, aws.env.properties, clock_persistent_vars_file, docker.env.properties
 There are respective example files with same variables.
 Also need to add Github and Docker hub credentials on Jenkins server,
 and mannually add its id to jenkins.env.properties file,
