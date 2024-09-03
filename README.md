@@ -44,35 +44,35 @@ Certainly, Github will notify Jenkins server with web hook <br/>
 when completed developing. <br/>
 
 - Dockerfile
-There is a multi step docker file.
-Main targets are tester and production generate respective images.
-I tried to use environment variables as much as possible
-to avoid using hardcoded variable values in Dockerfile.
+There is a multi step docker file. <br/>
+Main targets are tester and production generate respective images. <br/>
+I tried to use environment variables as much as possible <br/>
+to avoid using hardcoded variable values in Dockerfile. <br/>
 
 - Jenkinsfile
-At the beginning images were stored in Docker hub.
-Yet later I switched to AWS ECR, becasue its higher rate of 'docker login' operation
-from automatic scripts.
-There are several Jenkinsfile items correspond to clock project developing stages.
-I will probably split it to git branches in the future.
-Currently, there are dedicated folders contain respective Jenkinsfile. 
+At the beginning images were stored in Docker hub. <br/>
+Yet later I switched to AWS ECR, becasue its higher rate of 'docker login' operation <br/>
+from automatic scripts. <br/>
+There are several Jenkinsfile items correspond to clock project developing stages. <br/>
+I will probably split it to git branches in the future. <br/>
+Currently, there are dedicated folders contain respective Jenkinsfile. <br/>
 
 - 1 Docker Ubuntu host deployment.
 
 https://github.com/avrahamm/ci-cd-clock-proj/blob/main/docker-host-deploy/Jenkinsfile <br/>
 
-Images were tested, built and pushed to Docker hub on Jenkins DIND main node.
-Deployed to ubuntu host from Jenkins docker DIND server,
-using ssh connection with dedicated user and rsa keys.
+Images were tested, built and pushed to Docker hub on Jenkins DIND main node. <br/>
+Deployed to ubuntu host from Jenkins docker DIND server, <br/>
+using ssh connection with dedicated user and rsa keys. <br/>
 
 - 2 Docker AWS ec2 deployment on static test and production servers.
 
 https://github.com/avrahamm/ci-cd-clock-proj/blob/main/docker-aws-ec2-deploy/Jenkinsfile <br/>
 
 Initially test and production aws ec2 servers were prepared and their ip adresses <br/>
-set in environment file as environemtn variables.
+set in environment file as environemtn variables. <br/>
 Jenkinsfile ran testing, created and pushed images to Docker hub on test server. <br/>
-Then production image was run on production server.
+Then production image was run on production server. <br/>
   
 3 Docker AWS ec2 deployment on dynamic ec2 production server.
 
@@ -80,9 +80,9 @@ https://github.com/avrahamm/ci-cd-clock-proj/blob/main/docker-aws-tr-ec2-deploy/
 
 No static ec2 servers are prepared.
 Jenkinsfile ran testing, created and pushed images to AWS ECR hub <br/>
-locally on Jenkins server main node.
+locally on Jenkins server main node. <br/>
 Then terrafrom provisions production ec2 instance. <br/>
-Then production image was run on production server.
+Then production image was run on production server. <br/>
 Route53 clock.avrahammlabs.net record is set to new ec2 production ip. <br/>
 http://clock.avrahammlabs.net/ <br/>
 Currently, unused ec2 instances continue to function - need to terminate manually.
