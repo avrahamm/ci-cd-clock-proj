@@ -414,6 +414,7 @@ EOT
              steps {
                  script {
                      try {
+                     	 sleep 20
                          def response = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${env.EC2_PRODUCTION_IP}:${env.AWS_PROD_PORT}", returnStdout: true).trim()
                          if (response == "200") {
                              echo "Application is up and running on Production EC2!"
