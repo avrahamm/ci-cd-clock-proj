@@ -231,7 +231,7 @@ pipeline {
                     try {
                         echo 'Build docker images, run container and test'
                         sh """
-                            docker --debug build --target tester \
+                            docker --debug build -f Dockerfile-test \
                                    -t ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT} .
                             docker run --rm \
                                 -d --name ${env.TEST_CONTAINER_NAME} \
@@ -260,7 +260,7 @@ pipeline {
                     try {
                         echo 'Push test and production docker images'
                         sh """
-                            docker --debug build --target production \
+                            docker --debug build -f Dockerfile-production \
                                 -t ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT} .
 
                             docker images | grep clock || true
