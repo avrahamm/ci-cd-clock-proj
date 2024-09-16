@@ -9,99 +9,17 @@ pipeline {
         // Set from the global environment variable
         // to extract environment variables.
         JENKINS_ENV_FILE_PATH = "${env.JENKINS_ENV_FILE_PATH}"
-
-        EC2_PRODUCTION_BASE_NAME = "clock-production-${env.BUILD_NUMBER}"
-
-        // To reset Route53 domain to new ec2 production instance.
-        HOSTED_ZONE_ID = 'Z06214392XWEU4N3JH2I6'
-        DOMAIN_NAME = 'clock.avrahammlabs.net'
     }
 
     stages {
-        stage('Load Jenkins Environment Variables') {
+        stage('Load Environment Variables') {
             steps {
                 script {
-                    try {
-                        def envFilePath = env.JENKINS_ENV_FILE_PATH
-                        def props = readProperties file: envFilePath
-                        env.DOCKER_HUB_CREDENTIALS_ID = props.DOCKER_HUB_CREDENTIALS_ID
-                        env.CLOCK_PROJ_GIT_REPO_URL = props.CLOCK_PROJ_GIT_REPO_URL
-                        env.CLOCK_PROJ_DOCKER_ENV_FILE_PATH = props.CLOCK_PROJ_DOCKER_ENV_FILE_PATH
-                        env.CLOCK_PROJ_AWS_ENV_FILE_PATH = props.CLOCK_PROJ_AWS_ENV_FILE_PATH
-                        env.CLOCK_PROJ_PERSISTENT_VARS_FILE = props.CLOCK_PROJ_PERSISTENT_VARS_FILE
-                        env.GIT_CREDENTIALS_ID = props.GIT_CREDENTIALS_ID
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error("Failed stage('Load Jenkins Environment Variables'): ${e.message}")
-                    }
-                }
-            }
-        }
-
-        stage('Load Docker Environment Variables') {
-            steps {
-                script {
-                    try {
-                        def dockerEnvProps = readProperties file: env.CLOCK_PROJ_DOCKER_ENV_FILE_PATH
-
-                        env.DOCKER_REGISTRY = dockerEnvProps.DOCKER_REGISTRY
-
-                        env.CHROME_DRIVER_VERSION = dockerEnvProps.CHROME_DRIVER_VERSION
-                        env.CHROME_DRIVER_PATH = dockerEnvProps.CHROME_DRIVER_PATH
-                        env.PYTHONPATH = dockerEnvProps.PYTHONPATH
-                        env.SELENIUM_HEADLESS_MODE_DISPLAY_PORT = dockerEnvProps.SELENIUM_HEADLESS_MODE_DISPLAY_PORT
-                        env.CONTAINER_APP_PORT = dockerEnvProps.CONTAINER_APP_PORT
-                        env.PUBLISHED_TEST_APP_PORT = dockerEnvProps.PUBLISHED_TEST_APP_PORT
-                        env.PUBLISHED_PROD_APP_PORT = dockerEnvProps.PUBLISHED_PROD_APP_PORT
-                        env.IMAGE_NAME = dockerEnvProps.IMAGE_NAME
-                        env.WORKDIR = dockerEnvProps.WORKDIR
-
-                        env.UPDATE_CLOCK_TIME_INTERVAL = dockerEnvProps.UPDATE_CLOCK_TIME_INTERVAL
-                        env.CLOCK_APP_URL = dockerEnvProps.CLOCK_APP_URL
-                        env.REFRESH_INTERVAL = dockerEnvProps.REFRESH_INTERVAL
-                        env.TIME_FORMAT = dockerEnvProps.TIME_FORMAT
-                        env.TEST_OUTPUT_FILE_PATH = dockerEnvProps.TEST_OUTPUT_FILE_PATH
-                        env.PROD_OUTPUT_FILE_PATH = dockerEnvProps.PROD_OUTPUT_FILE_PATH
-                        env.TEST_CONTAINER_NAME = dockerEnvProps.TEST_CONTAINER_NAME
-                        env.PROD_CONTAINER_NAME = dockerEnvProps.PROD_CONTAINER_NAME
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error("Failed stage('Load Docker Environment Variables'): ${e.message}")
-                    }
-                }
-            }
-        }
-
-        stage('Load AWS Environment Variables') {
-            steps {
-                script {
-                    try {
-                        def awsEnvProps = readProperties file: env.CLOCK_PROJ_AWS_ENV_FILE_PATH
-                        env.AWS_CREDENTIALS_ID = awsEnvProps.AWS_CREDENTIALS_ID
-                        env.AWS_REGION = awsEnvProps.AWS_REGION
-                        env.HOSTED_ZONE_ID = awsEnvProps.HOSTED_ZONE_ID
-                        env.DOMAIN_NAME    = awsEnvProps.DOMAIN_NAME
-                        env.AWS_PROD_PORT = awsEnvProps.AWS_PROD_PORT
-                        env.EC2_USER = awsEnvProps.EC2_USER
-                        env.SSH_KEY_ID = awsEnvProps.SSH_KEY_ID
-
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error("Failed stage('Load AWS Environment Variables'): ${e.message}")
-                    }
-                }
-            }
-        }
-
-        stage('Read Persistent Variables') {
-            steps {
-                script {
-                    def props = readProperties file: env.CLOCK_PROJ_PERSISTENT_VARS_FILE
-                    // Convert the read properties to a regular Groovy map
-                    // TODO! Probably to delete previous tr workspace
-                    // after successful deployment
-                    persistentVars = props.collectEntries { key, value -> [key, value] }
-                    echo "Loaded persistent variables: ${persistentVars}"
+                    loadCredentialsIntoEnvironmentVariables()
+                    loadClockProjDataIntoEnvironmentVariables(env.JENKINS_ENV_FILE_PATH)
+                    loadDockerVariablesIntoEnvironmentVariables(env.CLOCK_PROJ_DOCKER_ENV_FILE_PATH)
+                    loadAWSEnvFileVariablesIntoEnvironmentVariables(env.CLOCK_PROJ_AWS_ENV_FILE_PATH)
+                    loadPersistentEnvFileVariablesIntoEnvironmentVariables(env.CLOCK_PROJ_PERSISTENT_VARS_FILE)
                 }
             }
         }
@@ -109,102 +27,8 @@ pipeline {
         stage('Git Clone and Set Variables') {
             steps {
                 script {
-                    try {
-                         echo 'Git Clone Repo'
-                         git branch: 'main',
-                             url: "${env.CLOCK_PROJ_GIT_REPO_URL}",
-                             credentialsId: "${env.GIT_CREDENTIALS_ID}"
-
-                        // Get the short Git commit hash
-                        env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-
-                        //curren build workspace
-                        env.WORKSPACE = "clock-${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
-
-                        // Set the full EC2 test and production names including the Git commit
-                        env.EC2_PRODUCTION_NAME = "${EC2_PRODUCTION_BASE_NAME}-${env.GIT_COMMIT_SHORT}"
-
-                        echo "Git Commit: ${env.GIT_COMMIT_SHORT}"
-                        echo "env.WORKSPACE : ${env.WORKSPACE}"
-                        echo "EC2 Production Name: ${env.EC2_PRODUCTION_NAME}"
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error("Failed stage('Set Git Commit Hash'): ${e.message}")
-                    }
-                }
-            }
-        }
-
-        stage('Create EC2 Instance') {
-            steps {
-                script {
-                    def terraformSucceeded = false
-
-                    try {
-                        withAWS(credentials: "${env.AWS_CREDENTIALS_ID}", region: "${env.AWS_REGION}") {
-                            dir('terraform') {
-                                // Create new workspace
-                                sh "terraform workspace new ${env.WORKSPACE} || terraform workspace select ${env.WORKSPACE}"
-
-                                // Initialize Terraform
-                                sh "terraform init"
-
-                                sh """
-                                    export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
-                                    export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
-                                    export AWS_DEFAULT_REGION=${env.AWS_REGION}
-                                    terraform plan -out=tfplan -var='instance_name=${env.EC2_PRODUCTION_NAME}' -var='aws_region=${env.AWS_REGION}'
-                                """
-                                sh """
-                                    export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
-                                    export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
-                                    export AWS_DEFAULT_REGION=${env.AWS_REGION}
-                                    terraform apply -auto-approve tfplan
-                                """
-
-                                // Capture outputs immediately after apply
-                                script {
-                                    env.EC2_PRODUCTION_INSTANCE_ID = sh(script: "terraform output -raw instance_id", returnStdout: true).trim()
-                                    env.EC2_PRODUCTION_IP = sh(script: "terraform output -raw instance_public_ip", returnStdout: true).trim()
-
-                                    // Print the captured details for verification
-                                    echo "Production Instance ID: ${env.EC2_PRODUCTION_INSTANCE_ID}"
-                                    echo "Production Instance IP: ${env.EC2_PRODUCTION_IP}"
-
-                                    terraformSucceeded = true
-                                    // remove after debug
-                                    sleep 10
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        echo "Error occurred during Terraform operations: ${e.getMessage()}"
-                        currentBuild.result = 'FAILURE'
-                    } finally {
-                        if (!terraformSucceeded) {
-                            echo "Terraform apply failed or was interrupted. Attempting to destroy resources..."
-                            try {
-                                withAWS(credentials: "${env.AWS_CREDENTIALS_ID}", region: "${env.AWS_REGION}") {
-                                    dir('terraform') {
-                                        sh """
-                                            export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
-                                            export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
-                                            export AWS_DEFAULT_REGION=${env.AWS_REGION}
-                                            terraform workspace select ${env.WORKSPACE}
-                                            terraform destroy -auto-approve'
-                                        """
-                                    }
-                                }
-                            } catch (Exception destroyError) {
-                                echo "Error during cleanup: ${destroyError.getMessage()}"
-                                echo "Manual cleanup may be necessary."
-                            }
-                        }
-                    }
-
-                    if (!terraformSucceeded) {
-                        error "Terraform operations failed. Pipeline halted."
-                    }
+                    gitClone()
+                    updateVariablesWithGitInfo()
                 }
             }
         }
@@ -212,15 +36,7 @@ pipeline {
         stage('Login to Docker to AWS ECR') {
             steps {
                 script {
-                    try {
-                        sh """
-                        # Authenticate Docker to ECR (no explicit login required with IAM roles)
-                        aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
-                        """
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error("Failed stage('Login to Docker to AWS ECR'): ${e.message}")
-                    }
+                    loginToDockerRegistry()
                 }
             }
         }
@@ -228,28 +44,7 @@ pipeline {
         stage('Tester stage') {
             steps {
                 script {
-                    try {
-                        echo 'Build docker images, run container and test'
-                        sh """
-                            docker --debug build -f Dockerfile-test \
-                                   -t ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT} .
-                            docker run --rm \
-                                -d --name ${env.TEST_CONTAINER_NAME} \
-                                -e WORKDIR=${env.WORKDIR} \
-                                -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \
-                                -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \
-                                -e OUTPUT_FILE_PATH=${env.TEST_OUTPUT_FILE_PATH} \
-                                -p ${env.PUBLISHED_TEST_APP_PORT}:${env.CONTAINER_APP_PORT}  \
-                                ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT}
-
-                            docker images | grep clock || true
-                            # docker image push ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT}
-
-                        """
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error("Failed stage('Tester stage'): ${e.message}")
-                    }
+                    buildTestingImageAndRunTests()
                 }
             }
         }
@@ -257,38 +52,21 @@ pipeline {
         stage('Production image') {
             steps {
                 script {
-                    try {
-                        echo 'Push test and production docker images'
-                        sh """
-                            docker --debug build -f Dockerfile-production \
-                                -t ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT} .
-
-                            docker images | grep clock || true
-                            docker image push ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
-                        """
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error "Failed on stage('Production image') : ${e.message}"
-                    }
+                    buildAndPushProductionImage()
                 }
             }
         }
 
         stage('Jenkins Server Cleaning') {
             steps {
+                cleanJenkinsNode()
+            }
+        }
+
+        stage('Create EC2 Instance') {
+            steps {
                 script {
-                    try {
-                        echo 'Cleaning....'
-                        sh """
-                           # docker rmi ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT} || true
-                           # docker rmi ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT} || true
-                           # Prune any dangling images
-                           # docker image prune -f || true
-                        """
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error "Failed on stage('Cleaning'): ${e.message}"
-                    }
+                    createEc2Instance(env.EC2_PRODUCTION_NAME)
                 }
             }
         }
@@ -297,187 +75,34 @@ pipeline {
         stage('Wait for Production EC2 Instance') {
             steps {
                 script {
-                    echo "Waiting for instance ${env.EC2_PRODUCTION_INSTANCE_ID} to be ready..."
-                    sleep 20
-                    def maxAttempts = 30
-                    def attemptCount = 0
-                    def instanceReady = false
-
-                    while (!instanceReady && attemptCount < maxAttempts) {
-                        sleep 20 // Wait for 20 seconds between checks
-
-                        withAWS(credentials: "${env.AWS_CREDENTIALS_ID}", region: "${env.AWS_REGION}") {
-                            dir('terraform') {
-
-                                // Use AWS CLI to check instance status
-                                def statusOutput = sh(
-                                    script: "aws ec2 describe-instance-status --instance-ids ${env.EC2_PRODUCTION_INSTANCE_ID} --region ${env.AWS_REGION} --output json",
-                                    returnStdout: true
-                                ).trim()
-
-                                // print debug
-                                echo statusOutput
-
-                                def statusJson = readJSON text: statusOutput
-
-                                if (statusJson.InstanceStatuses.size() > 0) {
-                                    def instanceStatus = statusJson.InstanceStatuses[0]
-                                    def instanceState = instanceStatus.InstanceState.Name
-                                    def instanceStatusCheck = instanceStatus.InstanceStatus.Status
-                                    def systemStatusCheck = instanceStatus.SystemStatus.Status
-
-                                    echo "Instance state: ${instanceState}, Instance status: ${instanceStatusCheck}, System status: ${systemStatusCheck}"
-
-                                    if (instanceState == 'running' && instanceStatusCheck == 'ok' && systemStatusCheck == 'ok') {
-                                        // Check if the instance is truly ready using sshagent
-                                        sshagent(credentials: [env.SSH_KEY_ID]) {
-                                            def readyCheck = sh(
-                                                script: """
-                                                ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ec2-user@${env.EC2_PRODUCTION_IP} '
-                                                    if [ -f /tmp/instance_ready ] && docker info > /dev/null 2>&1; then
-                                                        echo "ready"
-                                                    else
-                                                        echo "not_ready"
-                                                    fi
-                                                ' || echo "ssh_failed"
-                                                """,
-                                                returnStdout: true
-                                            ).trim()
-
-                                            if (readyCheck == 'ready') {
-                                                instanceReady = true
-                                                echo "Instance is now ready, status checks passed, and Docker is accessible."
-                                            } else if (readyCheck == 'ssh_failed') {
-                                                echo "SSH connection failed. Waiting for instance to be fully accessible..."
-                                            } else {
-                                                echo "Instance status checks passed but not yet ready. Waiting..."
-                                            }
-                                        }
-                                    } else {
-                                        echo "Instance not ready. Waiting..."
-                                    }
-                                } else {
-                                    echo "No status information available yet. Waiting..."
-                                }
-                            }
-                        }
-
-                        attemptCount++
-                    }
-
-                    if (!instanceReady) {
-                        error "Timed out waiting for instance to be ready after ${maxAttempts} attempts."
-                    }
+                   waitForEc2Instance(env.EC2_PRODUCTION_INSTANCE_ID)
                 }
             }
         }
 
-
         stage('Production Deploy on EC2') {
             steps {
                 script {
-                    withAWS(credentials: env.AWS_CREDENTIALS_ID, region: env.AWS_REGION) {
-                        sshagent(credentials: [env.SSH_KEY_ID]) {
-                            sh """
-                                ssh -o StrictHostKeyChecking=no ${env.EC2_USER}@${env.EC2_PRODUCTION_IP} << 'EOT'
-        set -ex
-
-        # Authenticate Docker to ECR (no explicit login required with IAM roles)
-        aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
-
-        # Verify Production Image
-        docker run --rm \\
-            -d --name ${env.PROD_CONTAINER_NAME} \\
-            -e WORKDIR=${env.WORKDIR} \\
-            -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \\
-            -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \\
-            -e OUTPUT_FILE_PATH=${env.PROD_OUTPUT_FILE_PATH} \\
-            -p ${env.AWS_PROD_PORT}:${env.CONTAINER_APP_PORT} \\
-            ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
-
-        # List Docker images for verification
-        # echo "Docker images:"
-        # docker images
-
-        # Logout from Docker registry
-        docker logout ${env.DOCKER_REGISTRY}
-EOT
-                                """
-                            }
-                        }
+                    deployOnEc2Instance(env.EC2_PRODUCTION_IP)
                 } // script
             } // steps
         } // stage
 
+        stage('Health Check on Production EC2') {
+            steps {
+                script {
+                    healthCheckEc2Instance(env.EC2_PRODUCTION_IP)
+                }
+            }
+        }
 
-         stage('Health Check on Production EC2') {
-             steps {
-                 script {
-                     try {
-                     	 sleep 20
-                         def response = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${env.EC2_PRODUCTION_IP}:${env.AWS_PROD_PORT}", returnStdout: true).trim()
-                         if (response == "200") {
-                             echo "Application is up and running on Production EC2!"
-                         } else {
-                             error "Application health check failed on Production EC2. HTTP response: ${response}"
-                         }
-                     } catch (Exception e) {
-                         currentBuild.result = 'FAILURE'
-                         error "Failed on stage('Health Check on Production EC2'): ${e.message}"
-                     }
-                 }
-             }
-         }
-
-         stage('Update Route 53 Record') {
-             steps {
-                 script {
-                     withAWS(credentials: env.AWS_CREDENTIALS_ID, region: env.AWS_REGION) {
-                         def changeJson = """
-                         {
-                             "Changes": [
-                                 {
-                                     "Action": "UPSERT",
-                                     "ResourceRecordSet": {
-                                         "Name": "${DOMAIN_NAME}",
-                                         "Type": "A",
-                                         "TTL": 300,
-                                         "ResourceRecords": [
-                                             {
-                                                 "Value": "${env.EC2_PRODUCTION_IP}"
-                                             }
-                                         ]
-                                     }
-                                 }
-                             ]
-                         }
-                         """
-
-                         writeFile file: 'route53-change-batch.json', text: changeJson
-
-                         sh """
-                              aws route53 change-resource-record-sets \
-                                --hosted-zone-id ${HOSTED_ZONE_ID} \
-                                --change-batch file://route53-change-batch.json
-                         """
-
-                         echo "Updated Route 53 record for ${DOMAIN_NAME} to point to ${env.EC2_PRODUCTION_IP}"
-
-                         // Update the persistent variables
-                         // TODO! Probably to delete tr workspace after next deployment
-                         persistentVars.LAST_DEPLOYED_WORKSPACE = env.WORKSPACE
-                         persistentVars.LAST_DEPLOYED_IP = env.EC2_PRODUCTION_IP
-
-                         // Write all variables back to the file
-                         def persistentVarsContent = persistentVars.collect { key, value -> "${key}=${value}" }.join('\n')
-                         writeFile file: env.CLOCK_PROJ_PERSISTENT_VARS_FILE, text: persistentVarsContent
-
-                         echo "Updated persistent variables file with new workspace ${env.WORKSPACE} and IP ${env.EC2_PRODUCTION_IP}"
-
-                     }
-                 }
-             }
-         }
+        stage('Update Route 53 Record') {
+            steps {
+                script {
+                    updateRoute53Record(DOMAIN_NAME, env.EC2_PRODUCTION_IP)
+                }
+            }
+        }
 
     // stages
     }
@@ -499,3 +124,451 @@ EOT
 // pipeline
 }
 
+def loadCredentialsIntoEnvironmentVariables() {
+    try {
+        env.DOCKER_HUB_CREDENTIALS_ID = props.DOCKER_HUB_CREDENTIALS_ID
+        env.GIT_CREDENTIALS_ID = props.GIT_CREDENTIALS_ID
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error("Failed stage('loadCredentialsIntoEnvironmentVariables'): ${e.message}")
+    }
+}
+
+def loadEnvFileDataIntoEnvironmentVariables(String envFilePath) {
+    // Load Jenkins, Docker, and AWS environment variables
+    // (Your existing code for loading environment variables)
+    try {
+        def props = readProperties file: envFilePath
+
+        env.CLOCK_PROJ_GIT_REPO_URL = props.CLOCK_PROJ_GIT_REPO_URL
+        env.CLOCK_PROJ_DOCKER_ENV_FILE_PATH = props.CLOCK_PROJ_DOCKER_ENV_FILE_PATH
+        env.CLOCK_PROJ_AWS_ENV_FILE_PATH = props.CLOCK_PROJ_AWS_ENV_FILE_PATH
+        env.CLOCK_PROJ_PERSISTENT_VARS_FILE = props.CLOCK_PROJ_PERSISTENT_VARS_FILE
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error("Failed stage('loadClockProjDataIntoEnvironmentVariables'): ${e.message}")
+    }
+}
+
+def loadDockerVariablesIntoEnvironmentVariables(String dockerEnvFilePath) {
+    try {
+        def dockerEnvProps = readProperties file: dockerEnvFilePath
+
+        env.DOCKER_REGISTRY = dockerEnvProps.DOCKER_REGISTRY
+        env.CHROME_DRIVER_VERSION = dockerEnvProps.CHROME_DRIVER_VERSION
+        env.CHROME_DRIVER_PATH = dockerEnvProps.CHROME_DRIVER_PATH
+        env.PYTHONPATH = dockerEnvProps.PYTHONPATH
+        env.SELENIUM_HEADLESS_MODE_DISPLAY_PORT = dockerEnvProps.SELENIUM_HEADLESS_MODE_DISPLAY_PORT
+        env.CONTAINER_APP_PORT = dockerEnvProps.CONTAINER_APP_PORT
+        env.PUBLISHED_TEST_APP_PORT = dockerEnvProps.PUBLISHED_TEST_APP_PORT
+        env.PUBLISHED_PROD_APP_PORT = dockerEnvProps.PUBLISHED_PROD_APP_PORT
+        env.IMAGE_NAME = dockerEnvProps.IMAGE_NAME
+        env.WORKDIR = dockerEnvProps.WORKDIR
+        env.UPDATE_CLOCK_TIME_INTERVAL = dockerEnvProps.UPDATE_CLOCK_TIME_INTERVAL
+        env.CLOCK_APP_URL = dockerEnvProps.CLOCK_APP_URL
+        env.REFRESH_INTERVAL = dockerEnvProps.REFRESH_INTERVAL
+        env.TIME_FORMAT = dockerEnvProps.TIME_FORMAT
+        env.TEST_OUTPUT_FILE_PATH = dockerEnvProps.TEST_OUTPUT_FILE_PATH
+        env.PROD_OUTPUT_FILE_PATH = dockerEnvProps.PROD_OUTPUT_FILE_PATH
+        env.TEST_CONTAINER_NAME = dockerEnvProps.TEST_CONTAINER_NAME
+        env.PROD_CONTAINER_NAME = dockerEnvProps.PROD_CONTAINER_NAME
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error("Failed stage('loadDockerVariablesIntoEnvironmentVariables'): ${e.message}")
+    }
+}
+
+def loadAWSEnvFileVariablesIntoEnvironmentVariables(String awsEnvFilePath) {
+    try {
+        def awsEnvProps = readProperties file: awsEnvFilePath
+        env.AWS_CREDENTIALS_ID = awsEnvProps.AWS_CREDENTIALS_ID
+        env.AWS_REGION = awsEnvProps.AWS_REGION
+        env.HOSTED_ZONE_ID = awsEnvProps.HOSTED_ZONE_ID
+        env.DOMAIN_NAME    = awsEnvProps.DOMAIN_NAME
+        env.AWS_PROD_PORT = awsEnvProps.AWS_PROD_PORT
+        env.EC2_USER = awsEnvProps.EC2_USER
+        env.SSH_KEY_ID = awsEnvProps.SSH_KEY_ID
+
+        // To reset Route53 domain to new ec2 production instance.
+        env.HOSTED_ZONE_ID = awsEnvProps.HOSTED_ZONE_ID
+        env.DOMAIN_NAME    = awsEnvProps.DOMAIN_NAME
+
+        env.EC2_PRODUCTION_BASE_NAME = "clock-production-${env.BUILD_NUMBER}"
+
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error("Failed stage('loadAWSEnvFileVariablesIntoEnvironmentVariables'): ${e.message}")
+    }
+}
+
+def loadPersistentEnvFileVariablesIntoEnvironmentVariables(String persistentEnvFilePath) {
+    try {
+        def props = readProperties file: persistentEnvFilePath
+        // Convert the read properties to a regular Groovy map
+        // TODO! Probably to delete previous tr workspace
+        // after successful deployment
+        persistentVars = props.collectEntries { key, value -> [key, value] }
+        echo "Loaded persistent variables: ${persistentVars}"
+
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error("Failed stage('loadPersistentEnvFileVariablesIntoEnvironmentVariables'): ${e.message}")
+    }
+}
+
+def gitClone() {
+   try {
+        echo 'Git Clone Repo'
+        git branch: 'main',
+            url: "${env.CLOCK_PROJ_GIT_REPO_URL}",
+            credentialsId: "${env.GIT_CREDENTIALS_ID}"
+   } catch (Exception e) {
+       currentBuild.result = 'FAILURE'
+       error("Failed stage('gitClone'): ${e.message}")
+   }
+}
+
+def updateVariablesWithGitInfo() {
+    try {
+       // Get the short Git commit hash
+       env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+
+       //curren build workspace
+       env.WORKSPACE = "clock-${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
+
+       // Set the full EC2 test and production names including the Git commit
+       env.EC2_PRODUCTION_NAME = "${EC2_PRODUCTION_BASE_NAME}-${env.GIT_COMMIT_SHORT}"
+
+       echo "Git Commit: ${env.GIT_COMMIT_SHORT}"
+       echo "env.WORKSPACE : ${env.WORKSPACE}"
+       echo "EC2 Production Name: ${env.EC2_PRODUCTION_NAME}"
+   } catch (Exception e) {
+       currentBuild.result = 'FAILURE'
+       error("Failed stage('updateVariablesWithGitInfo'): ${e.message}")
+   }
+}
+
+def loginToDockerRegistry() {
+    try {
+        sh """
+        # Authenticate Docker to ECR (no explicit login required with IAM roles)
+        aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+        """
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error("Failed stage('loginToDockerRegistry'): ${e.message}")
+    }
+}
+
+def buildTestingImageAndRunTests() {
+    try {
+        echo 'Build docker images, run container and test'
+        sh """
+            docker --debug build -f Dockerfile-test \
+                   -t ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT} .
+            docker run --rm \
+                -d --name ${env.TEST_CONTAINER_NAME} \
+                -e WORKDIR=${env.WORKDIR} \
+                -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \
+                -e CHROME_DRIVER_VERSION=${env.CHROME_DRIVER_VERSION} \
+                -e CHROME_DRIVER_PATH=${env.CHROME_DRIVER_PATH} \
+                -e OUTPUT_FILE_PATH=${env.TEST_OUTPUT_FILE_PATH} \
+                -p ${env.PUBLISHED_TEST_APP_PORT}:${env.CONTAINER_APP_PORT}  \
+                ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT}
+
+            docker images | grep clock || true
+            # docker image push ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT}
+
+        """
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error("Failed stage('buildTestingImageAndRunTests'): ${e.message}")
+    }
+}
+
+def buildAndPushProductionImage() {
+    try {
+        echo 'Push production docker image'
+        sh """
+            docker --debug build -f Dockerfile-production \
+                -t ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT} .
+
+            docker images | grep clock || true
+            docker image push ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
+        """
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error "Failed on stage('buildAndPushProductionImage') : ${e.message}"
+    }
+}
+
+def cleanJenkinsNode() {
+    try {
+        echo 'Cleaning....'
+        sh """
+           # docker rmi ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT} || true
+           # docker rmi ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT} || true
+           # Prune any dangling images
+           # docker image prune -f || true
+        """
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error "Failed on stage('Cleaning'): ${e.message}"
+    }
+}
+
+def createEc2Instance(String ec2InstanceName) {
+    def terraformSucceeded = false
+
+    try {
+        withAWS(credentials: "${env.AWS_CREDENTIALS_ID}", region: "${env.AWS_REGION}") {
+            dir('terraform') {
+                // Create new workspace
+                sh "terraform workspace new ${env.WORKSPACE} || terraform workspace select ${env.WORKSPACE}"
+
+                // Initialize Terraform
+                sh "terraform init"
+
+                sh """
+                    export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
+                    export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
+                    export AWS_DEFAULT_REGION=${env.AWS_REGION}
+                    terraform plan -out=tfplan -var='instance_name=${ec2InstanceName}' -var='aws_region=${env.AWS_REGION}'
+                """
+                sh """
+                    export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
+                    export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
+                    export AWS_DEFAULT_REGION=${env.AWS_REGION}
+                    terraform apply -auto-approve tfplan
+                """
+
+                // Capture outputs immediately after apply
+                script {
+                    env.EC2_PRODUCTION_INSTANCE_ID = sh(script: "terraform output -raw instance_id", returnStdout: true).trim()
+                    env.EC2_PRODUCTION_IP = sh(script: "terraform output -raw instance_public_ip", returnStdout: true).trim()
+
+                    // Print the captured details for verification
+                    echo "Production Instance ID: ${env.EC2_PRODUCTION_INSTANCE_ID}"
+                    echo "Production Instance IP: ${env.EC2_PRODUCTION_IP}"
+
+                    terraformSucceeded = true
+                    // remove after debug
+                    sleep 10
+                }
+            }
+        }
+    } catch (Exception e) {
+        echo "Error occurred during Terraform operations ${ec2InstanceName}: ${e.getMessage()}"
+        currentBuild.result = 'FAILURE'
+    } finally {
+        if (!terraformSucceeded) {
+            echo "Terraform apply failed or was interrupted. Attempting to destroy resources..."
+            try {
+                withAWS(credentials: "${env.AWS_CREDENTIALS_ID}", region: "${env.AWS_REGION}") {
+                    dir('terraform') {
+                        sh """
+                            export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
+                            export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
+                            export AWS_DEFAULT_REGION=${env.AWS_REGION}
+                            terraform workspace select ${env.WORKSPACE}
+                            terraform destroy -auto-approve'
+                        """
+                    }
+                }
+            } catch (Exception destroyError) {
+                echo "Error during cleanup: ${destroyError.getMessage()}"
+                echo "Manual cleanup may be necessary."
+            }
+        }
+    }
+
+    if (!terraformSucceeded) {
+        error "Terraform operations failed. Pipeline halted."
+    }
+}
+
+
+def waitForEc2Instance(String ec2Ip) {
+    try {
+         echo "Waiting for instance ${ec2Ip} to be ready..."
+        sleep 20
+        def maxAttempts = 30
+        def attemptCount = 0
+        def instanceReady = false
+
+        while (!instanceReady && attemptCount < maxAttempts) {
+            sleep 20 // Wait for 20 seconds between checks
+
+            withAWS(credentials: "${env.AWS_CREDENTIALS_ID}", region: "${env.AWS_REGION}") {
+                dir('terraform') {
+
+                    // Use AWS CLI to check instance status
+                    def statusOutput = sh(
+                        script: "aws ec2 describe-instance-status --instance-ids ${ec2Ip} --region ${env.AWS_REGION} --output json",
+                        returnStdout: true
+                    ).trim()
+
+                    // print debug
+                    echo statusOutput
+
+                    def statusJson = readJSON text: statusOutput
+
+                    if (statusJson.InstanceStatuses.size() > 0) {
+                        def instanceStatus = statusJson.InstanceStatuses[0]
+                        def instanceState = instanceStatus.InstanceState.Name
+                        def instanceStatusCheck = instanceStatus.InstanceStatus.Status
+                        def systemStatusCheck = instanceStatus.SystemStatus.Status
+
+                        echo "Instance state: ${instanceState}, Instance status: ${instanceStatusCheck}, System status: ${systemStatusCheck}"
+
+                        if (instanceState == 'running' && instanceStatusCheck == 'ok' && systemStatusCheck == 'ok') {
+                            // Check if the instance is truly ready using sshagent
+                            sshagent(credentials: [env.SSH_KEY_ID]) {
+                                def readyCheck = sh(
+                                    script: """
+                                    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${env.EC2_USER}@${ec2Ip} '
+                                        if [ -f /tmp/instance_ready ] && docker info > /dev/null 2>&1; then
+                                            echo "ready"
+                                        else
+                                            echo "not_ready"
+                                        fi
+                                    ' || echo "ssh_failed"
+                                    """,
+                                    returnStdout: true
+                                ).trim()
+
+                                if (readyCheck == 'ready') {
+                                    instanceReady = true
+                                    echo "Instance is now ready, status checks passed, and Docker is accessible."
+                                } else if (readyCheck == 'ssh_failed') {
+                                    echo "SSH connection failed. Waiting for instance to be fully accessible..."
+                                } else {
+                                    echo "Instance status checks passed but not yet ready. Waiting..."
+                                }
+                            }
+                        } else {
+                            echo "Instance not ready. Waiting..."
+                        }
+                    } else {
+                        echo "No status information available yet. Waiting..."
+                    }
+                }
+            }
+
+            attemptCount++
+        }
+
+        if (!instanceReady) {
+            error "Timed out waiting for instance ${ec2Ip} to be ready after ${maxAttempts} attempts."
+        }
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error "Failed on waitForEc2Instance ${ec2Ip} : ${e.message}"
+    }
+}
+
+
+def deployOnEc2Instance(String ec2Ip) {
+    try {
+        withAWS(credentials: env.AWS_CREDENTIALS_ID, region: env.AWS_REGION) {
+                        sshagent(credentials: [env.SSH_KEY_ID]) {
+                            sh """
+                                ssh -o StrictHostKeyChecking=no ${env.EC2_USER}@${ec2Ip} << 'EOT'
+        set -ex
+
+        # Authenticate Docker to ECR (no explicit login required with IAM roles)
+        aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+
+        # Verify Production Image
+        docker run --rm \\
+            -d --name ${env.PROD_CONTAINER_NAME} \\
+            -e WORKDIR=${env.WORKDIR} \\
+            -e CONTAINER_APP_PORT=${env.CONTAINER_APP_PORT} \\
+            -e OUTPUT_FILE_PATH=${env.PROD_OUTPUT_FILE_PATH} \\
+            -p ${env.AWS_PROD_PORT}:${env.CONTAINER_APP_PORT} \\
+            ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT}
+
+        # List Docker images for verification
+        # echo "Docker images:"
+        # docker images
+
+        # Logout from Docker registry
+        docker logout ${env.DOCKER_REGISTRY}
+EOT
+                                """
+            }
+        }
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error "Failed on deployOnEc2Instance(), http://${ec2Ip} : ${e.message}"
+    }
+}
+
+
+def healthCheckEc2Instance(String ec2Ip) {
+    try {
+        sleep 20
+        def response = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${ec2Ip}:${env.AWS_PROD_PORT}", returnStdout: true).trim()
+        if (response == "200") {
+            echo "Application is up and running on Production EC2 http://${ec2Ip}:${env.AWS_PROD_PORT}"
+        } else {
+            error "Application health check failed on Production EC2 http://${ec2Ip}:${env.AWS_PROD_PORT}, HTTP response: ${response}"
+        }
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error "Failed on healthCheckEc2Instance(), http://${ec2Ip}:${env.AWS_PROD_PORT} : ${e.message}"
+    }
+
+}
+
+
+def updateRoute53Record(String domainName, String ec2Ip) {
+    try {
+        withAWS(credentials: env.AWS_CREDENTIALS_ID, region: env.AWS_REGION) {
+             def changeJson = """
+             {
+                 "Changes": [
+                     {
+                         "Action": "UPSERT",
+                         "ResourceRecordSet": {
+                             "Name": "${domainName}",
+                             "Type": "A",
+                             "TTL": 300,
+                             "ResourceRecords": [
+                                 {
+                                     "Value": "${ec2Ip}"
+                                 }
+                             ]
+                         }
+                     }
+                 ]
+             }
+             """
+
+             writeFile file: 'route53-change-batch.json', text: changeJson
+
+             sh """
+                  aws route53 change-resource-record-sets \
+                    --hosted-zone-id ${HOSTED_ZONE_ID} \
+                    --change-batch file://route53-change-batch.json
+             """
+
+             echo "Updated Route 53 record for ${domainName} to point to ${ec2Ip}"
+
+             // Update the persistent variables
+             // TODO! Probably to delete tr workspace after next deployment
+             persistentVars.LAST_DEPLOYED_WORKSPACE = env.WORKSPACE
+             persistentVars.LAST_DEPLOYED_IP = ec2Ip
+
+             // Write all variables back to the file
+             def persistentVarsContent = persistentVars.collect { key, value -> "${key}=${value}" }.join('\n')
+             writeFile file: env.CLOCK_PROJ_PERSISTENT_VARS_FILE, text: persistentVarsContent
+
+             echo "Updated persistent variables file with new workspace ${env.WORKSPACE} and IP ${ec2Ip}"
+
+         }
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error "Failed on stage('updateRoute53Record'): ${e.message}"
+    }
+}
