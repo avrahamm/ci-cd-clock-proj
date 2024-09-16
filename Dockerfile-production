@@ -12,9 +12,9 @@ RUN adduser -D -s /bin/ash myuser && \
 # Set environment variables
 ENV WORKDIR=/usr/src/app \
     CONTAINER_APP_PORT=80 \
-    OUTPUT_FILE_PATH=/var/lib/nginx/html/myclock.html
+    OUTPUT_FILE_PATH=/var/lib/nginx/html/myclock.html \
     PYTHONPATH=. \
-    PATH="/home/myuser/.local/bin:${PATH}" \
+    PATH="/home/myuser/.local/bin:${PATH}"
 
 # Set the working directory
 WORKDIR ${WORKDIR}
