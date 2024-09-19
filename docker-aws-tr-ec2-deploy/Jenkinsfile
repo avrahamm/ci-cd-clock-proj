@@ -6,7 +6,14 @@ pipeline {
         JENKINS_ENV_FILE_PATH = "${env.JENKINS_ENV_FILE_PATH}"
     }
 
-    stages { 
+    stages {
+        stage('Debug Environment') {
+            steps {
+                echo "JENKINS_ENV_FILE_PATH: ${env.JENKINS_ENV_FILE_PATH}"
+                sh "cat ${env.JENKINS_ENV_FILE_PATH}"
+            }
+        }
+
         stage('Load Environment Variables') {
             steps {
                 script {
@@ -136,12 +143,20 @@ pipeline {
 }
 
 def loadCredentialsIntoEnvironmentVariables(String envFilePath) {
+    echo "Attempting to load credentials from: ${envFilePath}"
     try {
+        def propsFile = readFile(envFilePath)
+        echo "File contents: ${propsFile}" // Be cautious with sensitive information
         def props = readProperties file: envFilePath
+        echo "Properties read: ${props}"
 
-        env.DOCKER_HUB_CREDENTIALS_ID = props.DOCKER_HUB_CREDENTIALS_ID
-        env.GIT_CREDENTIALS_ID = props.GIT_CREDENTIALS_ID
+        env.DOCKER_HUB_CREDENTIALS_ID = props.DOCKER_HUB_CREDENTIALS_ID ?: ''
+        env.GIT_CREDENTIALS_ID = props.GIT_CREDENTIALS_ID ?: ''
+
+        echo "DOCKER_HUB_CREDENTIALS_ID: ${env.DOCKER_HUB_CREDENTIALS_ID}"
+        echo "GIT_CREDENTIALS_ID: ${env.GIT_CREDENTIALS_ID}"
     } catch (Exception e) {
+        echo "Exception details: ${e.toString()}"
         currentBuild.result = 'FAILURE'
         error("Failed stage('loadCredentialsIntoEnvironmentVariables'): ${e.message}")
     }
@@ -263,12 +278,12 @@ def updateVariablesWithGitInfo() {
        //curren build workspace
        env.WORKSPACE = "clock-${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
 
-       // Set the full EC2 test and production names including the Git commit
+       // Set the full EC2 instance name including the Git commit
        env.EC2_INSTANCE_NAME = "clock-${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
 
        echo "Git Commit: ${env.GIT_COMMIT_SHORT}"
        echo "env.WORKSPACE : ${env.WORKSPACE}"
-       echo "EC2 Production Name: ${env.EC2_INSTANCE_NAME}"
+       echo "EC2 Instance Name: ${env.EC2_INSTANCE_NAME}"
    } catch (Exception e) {
        currentBuild.result = 'FAILURE'
        error("Failed stage('updateVariablesWithGitInfo'): ${e.message}")
@@ -536,9 +551,9 @@ def healthCheckEc2Instance(String ec2Ip) {
         sleep(20 as int)
         def response = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${ec2Ip}:${env.AWS_PROD_PORT}", returnStdout: true).trim()
         if (response == "200") {
-            echo "Application is up and running on Production EC2 http://${ec2Ip}:${env.AWS_PROD_PORT}"
+            echo "Application is up and running on EC2 http://${ec2Ip}:${env.AWS_PROD_PORT}"
         } else {
-            error "Application health check failed on Production EC2 http://${ec2Ip}:${env.AWS_PROD_PORT}, HTTP response: ${response}"
+            error "Application health check failed on EC2 http://${ec2Ip}:${env.AWS_PROD_PORT}, HTTP response: ${response}"
         }
     } catch (Exception e) {
         currentBuild.result = 'FAILURE'
