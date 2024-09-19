@@ -349,13 +349,21 @@ def buildAndPushProductionImage() {
 
 def cleanJenkinsNode() {
     try {
-        echo 'Cleaning....'
+        echo 'Removing docker images'
         sh """
            # docker rmi ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT} || true
            # docker rmi ${env.IMAGE_NAME}:production-${env.GIT_COMMIT_SHORT} || true
            # Prune any dangling images
            # docker image prune -f || true
         """
+
+        echo 'Deleting current terraform workspace'
+        dir('terraform') {
+            // Create new workspace
+            sh "terraform workspace select default || true"
+            sh "terraform workspace delete -force ${env.WORKSPACE} || true"
+        }
+
     } catch (Exception e) {
         currentBuild.result = 'FAILURE'
         error "Failed on stage('Cleaning'): ${e.message}"
