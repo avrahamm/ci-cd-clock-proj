@@ -1,8 +1,3 @@
-// Define the function as a Closure at the top of your pipeline script
-def createJsonArray = { names ->
-    return "[${names.collect { "\"${it}\"" }.join(',')}]"
-}
-
 pipeline {
     agent any
     environment {
@@ -12,11 +7,12 @@ pipeline {
     }
 
     stages {
+
         stage('Load Environment Variables') {
             steps {
                 script {
-                    loadCredentialsIntoEnvironmentVariables()
-                    loadClockProjDataIntoEnvironmentVariables(env.JENKINS_ENV_FILE_PATH)
+                    loadCredentialsIntoEnvironmentVariables(env.JENKINS_ENV_FILE_PATH)
+                    loadEnvFileDataIntoEnvironmentVariables(env.JENKINS_ENV_FILE_PATH)
                     loadDockerVariablesIntoEnvironmentVariables(env.CLOCK_PROJ_DOCKER_ENV_FILE_PATH)
                     loadAWSEnvFileVariablesIntoEnvironmentVariables(env.CLOCK_PROJ_AWS_ENV_FILE_PATH)
                     loadPersistentEnvFileVariablesIntoEnvironmentVariables(env.CLOCK_PROJ_PERSISTENT_VARS_FILE)
@@ -40,66 +36,81 @@ pipeline {
                 }
             }
         }
-
-        stage('Tester stage') {
+    
+        stage('Test') {
             steps {
                 script {
-                    buildTestingImageAndRunTests()
+                    if (env.BRANCH_NAME == 'production' || env.BRANCH_NAME == 'staging') {
+                        buildTestingImageAndRunTests()
+                    } else {
+                        echo "TODO! test feature branch git push"
+                    }
                 }
             }
         }
 
-        stage('Production image') {
-            steps {
-                script {
-                    buildAndPushProductionImage()
+        stage('Deploy') {
+            when {
+                anyOf {
+                    branch 'staging'
+                    branch 'production'
                 }
             }
-        }
-
-        stage('Jenkins Server Cleaning') {
-            steps {
-                cleanJenkinsNode()
-            }
-        }
-
-        stage('Create EC2 Instance') {
-            steps {
-                script {
-                    createEc2Instance(env.EC2_PRODUCTION_NAME)
+            stages {
+                
+                stage('Production image') {
+                    steps {
+                        script {
+                            buildAndPushProductionImage()
+                        }
+                    }
                 }
-            }
-        }
 
+                stage('Create EC2 Instance') {
+                    steps {
+                        script {
+                            def ec2InstanceInfo = createEc2Instance(env.EC2_INSTANCE_NAME)
+                            env.EC2_INSTANCE_ID = ec2InstanceInfo.ec2InstanceId
+                            env.EC2_INSTANCE_IP = ec2InstanceInfo.ec2InstancePublicIp
 
-        stage('Wait for Production EC2 Instance') {
-            steps {
-                script {
-                   waitForEc2Instance(env.EC2_PRODUCTION_INSTANCE_ID)
+                            // Print the captured details for verification
+                            echo "Created ec2 Instance ID: ${env.EC2_INSTANCE_ID}"
+                            echo "Created ec2 Instance IP: ${env.EC2_INSTANCE_IP}"
+                        }
+                    }
                 }
-            }
-        }
 
-        stage('Production Deploy on EC2') {
-            steps {
-                script {
-                    deployOnEc2Instance(env.EC2_PRODUCTION_IP)
-                } // script
-            } // steps
-        } // stage
-
-        stage('Health Check on Production EC2') {
-            steps {
-                script {
-                    healthCheckEc2Instance(env.EC2_PRODUCTION_IP)
+                stage('Wait for EC2 Instance') {
+                    steps {
+                        script {
+                            waitForEc2Instance(env.EC2_INSTANCE_ID, env.EC2_INSTANCE_IP)
+                        }
+                    }
                 }
-            }
-        }
 
-        stage('Update Route 53 Record') {
-            steps {
-                script {
-                    updateRoute53Record(DOMAIN_NAME, env.EC2_PRODUCTION_IP)
+                stage('Deploy on EC2') {
+                    steps {
+                        script {
+                            deployOnEc2Instance(env.EC2_INSTANCE_IP)
+                        } // script
+                    } // steps
+                } // stage
+
+                stage('Health Check on EC2') {
+                    steps {
+                        script {
+                            healthCheckEc2Instance(env.EC2_INSTANCE_IP)
+                        }
+                    }
+                }
+
+                stage('Update Route 53 Record') {
+                    steps {
+                        script {
+                            getDomainNameByBranch()
+                            updateRoute53Record(env.DOMAIN_NAME, env.EC2_INSTANCE_IP)
+                        }
+                    }
                 }
             }
         }
@@ -118,14 +129,17 @@ pipeline {
             }
             always {
                sh 'docker logout'
+               cleanJenkinsNode()
             }
         }
 
 // pipeline
 }
 
-def loadCredentialsIntoEnvironmentVariables() {
+def loadCredentialsIntoEnvironmentVariables(String envFilePath) {
     try {
+        def props = readProperties file: envFilePath
+
         env.DOCKER_HUB_CREDENTIALS_ID = props.DOCKER_HUB_CREDENTIALS_ID
         env.GIT_CREDENTIALS_ID = props.GIT_CREDENTIALS_ID
     } catch (Exception e) {
@@ -146,7 +160,7 @@ def loadEnvFileDataIntoEnvironmentVariables(String envFilePath) {
         env.CLOCK_PROJ_PERSISTENT_VARS_FILE = props.CLOCK_PROJ_PERSISTENT_VARS_FILE
     } catch (Exception e) {
         currentBuild.result = 'FAILURE'
-        error("Failed stage('loadClockProjDataIntoEnvironmentVariables'): ${e.message}")
+        error("Failed stage('loadEnvFileDataIntoEnvironmentVariables'): ${e.message}")
     }
 }
 
@@ -183,17 +197,14 @@ def loadAWSEnvFileVariablesIntoEnvironmentVariables(String awsEnvFilePath) {
         def awsEnvProps = readProperties file: awsEnvFilePath
         env.AWS_CREDENTIALS_ID = awsEnvProps.AWS_CREDENTIALS_ID
         env.AWS_REGION = awsEnvProps.AWS_REGION
-        env.HOSTED_ZONE_ID = awsEnvProps.HOSTED_ZONE_ID
-        env.DOMAIN_NAME    = awsEnvProps.DOMAIN_NAME
         env.AWS_PROD_PORT = awsEnvProps.AWS_PROD_PORT
         env.EC2_USER = awsEnvProps.EC2_USER
         env.SSH_KEY_ID = awsEnvProps.SSH_KEY_ID
 
         // To reset Route53 domain to new ec2 production instance.
         env.HOSTED_ZONE_ID = awsEnvProps.HOSTED_ZONE_ID
-        env.DOMAIN_NAME    = awsEnvProps.DOMAIN_NAME
-
-        env.EC2_PRODUCTION_BASE_NAME = "clock-production-${env.BUILD_NUMBER}"
+        env.STAGING_DOMAIN_NAME    = awsEnvProps.STAGING_DOMAIN_NAME
+        env.PRODUCTION_DOMAIN_NAME = awsEnvProps.PRODUCTION_DOMAIN_NAME
 
     } catch (Exception e) {
         currentBuild.result = 'FAILURE'
@@ -216,37 +227,70 @@ def loadPersistentEnvFileVariablesIntoEnvironmentVariables(String persistentEnvF
     }
 }
 
+
+// A version used for NOT multi branch pipeline job.
+//def gitClone() {
+//   try {
+//        echo 'Git Clone Repo'
+//        git branch: 'main',
+////        git branch: 'staging',
+////        git branch: 'production',
+//            url: "${env.CLOCK_PROJ_GIT_REPO_URL}",
+//            credentialsId: "${env.GIT_CREDENTIALS_ID}"
+//   } catch (Exception e) {
+//       currentBuild.result = 'FAILURE'
+//       error("Failed gitClone: ${e.message}")
+//   }
+//}
+
 def gitClone() {
-   try {
+    try {
         echo 'Git Clone Repo'
-        git branch: 'main',
-            url: "${env.CLOCK_PROJ_GIT_REPO_URL}",
-            credentialsId: "${env.GIT_CREDENTIALS_ID}"
-   } catch (Exception e) {
-       currentBuild.result = 'FAILURE'
-       error("Failed stage('gitClone'): ${e.message}")
-   }
+        checkout scm
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error("Failed gitClone: ${e.message}")
+    }
 }
 
 def updateVariablesWithGitInfo() {
     try {
+       env.BRANCH_NAME = getBranchName()
        // Get the short Git commit hash
-       env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+       env.GIT_COMMIT_SHORT = getCommitHash()
+       // Prepend with branch name
+       env.GIT_COMMIT_SHORT = "${env.BRANCH_NAME}-${env.GIT_COMMIT_SHORT}"
 
        //curren build workspace
        env.WORKSPACE = "clock-${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
 
-       // Set the full EC2 test and production names including the Git commit
-       env.EC2_PRODUCTION_NAME = "${EC2_PRODUCTION_BASE_NAME}-${env.GIT_COMMIT_SHORT}"
+       // Set the full EC2 instance name including the Git commit
+       env.EC2_INSTANCE_NAME = "clock-${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
 
        echo "Git Commit: ${env.GIT_COMMIT_SHORT}"
        echo "env.WORKSPACE : ${env.WORKSPACE}"
-       echo "EC2 Production Name: ${env.EC2_PRODUCTION_NAME}"
+       echo "EC2 Instance Name: ${env.EC2_INSTANCE_NAME}"
    } catch (Exception e) {
        currentBuild.result = 'FAILURE'
        error("Failed stage('updateVariablesWithGitInfo'): ${e.message}")
    }
 }
+
+def getCommitHash() {
+    return sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+}
+
+
+def getBranchName() {
+    if (env.BRANCH_NAME) {
+        return env.BRANCH_NAME
+    } else if (env.GIT_BRANCH) {
+        return env.GIT_BRANCH.replaceFirst("origin/", "")
+    } else {
+        return sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+    }
+}
+
 
 def loginToDockerRegistry() {
     try {
@@ -282,7 +326,7 @@ def buildTestingImageAndRunTests() {
         """
     } catch (Exception e) {
         currentBuild.result = 'FAILURE'
-        error("Failed stage('buildTestingImageAndRunTests'): ${e.message}")
+        error("Failed buildTestingImageAndRunTests : ${e.message}")
     }
 }
 
@@ -318,8 +362,6 @@ def cleanJenkinsNode() {
 }
 
 def createEc2Instance(String ec2InstanceName) {
-    def terraformSucceeded = false
-
     try {
         withAWS(credentials: "${env.AWS_CREDENTIALS_ID}", region: "${env.AWS_REGION}") {
             dir('terraform') {
@@ -342,69 +384,53 @@ def createEc2Instance(String ec2InstanceName) {
                     terraform apply -auto-approve tfplan
                 """
 
-                // Capture outputs immediately after apply
-                script {
-                    env.EC2_PRODUCTION_INSTANCE_ID = sh(script: "terraform output -raw instance_id", returnStdout: true).trim()
-                    env.EC2_PRODUCTION_IP = sh(script: "terraform output -raw instance_public_ip", returnStdout: true).trim()
-
-                    // Print the captured details for verification
-                    echo "Production Instance ID: ${env.EC2_PRODUCTION_INSTANCE_ID}"
-                    echo "Production Instance IP: ${env.EC2_PRODUCTION_IP}"
-
-                    terraformSucceeded = true
-                    // remove after debug
-                    sleep 10
-                }
+                return [
+                    ec2InstanceId: sh(script: "terraform output -raw instance_id", returnStdout: true).trim(),
+                    ec2InstancePublicIp: sh(script: "terraform output -raw instance_public_ip", returnStdout: true).trim()
+                ]
             }
         }
     } catch (Exception e) {
         echo "Error occurred during Terraform operations ${ec2InstanceName}: ${e.getMessage()}"
         currentBuild.result = 'FAILURE'
-    } finally {
-        if (!terraformSucceeded) {
-            echo "Terraform apply failed or was interrupted. Attempting to destroy resources..."
-            try {
-                withAWS(credentials: "${env.AWS_CREDENTIALS_ID}", region: "${env.AWS_REGION}") {
-                    dir('terraform') {
-                        sh """
-                            export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
-                            export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
-                            export AWS_DEFAULT_REGION=${env.AWS_REGION}
-                            terraform workspace select ${env.WORKSPACE}
-                            terraform destroy -auto-approve'
-                        """
-                    }
+        echo "Terraform apply failed or was interrupted. Attempting to destroy resources..."
+        try {
+            withAWS(credentials: "${env.AWS_CREDENTIALS_ID}", region: "${env.AWS_REGION}") {
+                dir('terraform') {
+                    sh """
+                        export AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID}
+                        export AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY}
+                        export AWS_DEFAULT_REGION=${env.AWS_REGION}
+                        terraform workspace select ${env.WORKSPACE}
+                        terraform destroy -auto-approve'
+                    """
                 }
-            } catch (Exception destroyError) {
-                echo "Error during cleanup: ${destroyError.getMessage()}"
-                echo "Manual cleanup may be necessary."
             }
+        } catch (Exception destroyError) {
+            echo "Error during cleanup: ${destroyError.getMessage()}"
+            echo "Manual cleanup may be necessary."
         }
-    }
-
-    if (!terraformSucceeded) {
-        error "Terraform operations failed. Pipeline halted."
     }
 }
 
 
-def waitForEc2Instance(String ec2Ip) {
+def waitForEc2Instance(String ec2InstanceId, String ec2Ip) {
     try {
-         echo "Waiting for instance ${ec2Ip} to be ready..."
-        sleep 20
-        def maxAttempts = 30
-        def attemptCount = 0
-        def instanceReady = false
+         echo "Waiting for instance ${ec2InstanceId} to be ready..."
+        sleep(20 as int)
+        int maxAttempts = 30
+        int attemptCount = 0
+        boolean instanceReady = false
 
         while (!instanceReady && attemptCount < maxAttempts) {
-            sleep 20 // Wait for 20 seconds between checks
+            sleep(20 as int)  // Wait for 20 seconds between checks
 
             withAWS(credentials: "${env.AWS_CREDENTIALS_ID}", region: "${env.AWS_REGION}") {
                 dir('terraform') {
 
                     // Use AWS CLI to check instance status
                     def statusOutput = sh(
-                        script: "aws ec2 describe-instance-status --instance-ids ${ec2Ip} --region ${env.AWS_REGION} --output json",
+                        script: "aws ec2 describe-instance-status --instance-ids ${ec2InstanceId} --region ${env.AWS_REGION} --output json",
                         returnStdout: true
                     ).trim()
 
@@ -414,7 +440,8 @@ def waitForEc2Instance(String ec2Ip) {
                     def statusJson = readJSON text: statusOutput
 
                     if (statusJson.InstanceStatuses.size() > 0) {
-                        def instanceStatus = statusJson.InstanceStatuses[0]
+//                        def instanceStatus = statusJson.InstanceStatuses[0]
+                        def instanceStatus = (statusJson.InstanceStatuses as List)[0]
                         def instanceState = instanceStatus.InstanceState.Name
                         def instanceStatusCheck = instanceStatus.InstanceStatus.Status
                         def systemStatusCheck = instanceStatus.SystemStatus.Status
@@ -459,11 +486,11 @@ def waitForEc2Instance(String ec2Ip) {
         }
 
         if (!instanceReady) {
-            error "Timed out waiting for instance ${ec2Ip} to be ready after ${maxAttempts} attempts."
+            error "Timed out waiting for instance ${ec2InstanceId}, ip = ${ec2Ip} to be ready after ${maxAttempts} attempts."
         }
     } catch (Exception e) {
         currentBuild.result = 'FAILURE'
-        error "Failed on waitForEc2Instance ${ec2Ip} : ${e.message}"
+        error "Failed on waitForEc2Instance ${ec2InstanceId}, ip = ${ec2Ip} : ${e.message}"
     }
 }
 
@@ -507,18 +534,28 @@ EOT
 
 def healthCheckEc2Instance(String ec2Ip) {
     try {
-        sleep 20
+        sleep(20 as int)
         def response = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${ec2Ip}:${env.AWS_PROD_PORT}", returnStdout: true).trim()
         if (response == "200") {
-            echo "Application is up and running on Production EC2 http://${ec2Ip}:${env.AWS_PROD_PORT}"
+            echo "Application is up and running on EC2 http://${ec2Ip}:${env.AWS_PROD_PORT}"
         } else {
-            error "Application health check failed on Production EC2 http://${ec2Ip}:${env.AWS_PROD_PORT}, HTTP response: ${response}"
+            error "Application health check failed on EC2 http://${ec2Ip}:${env.AWS_PROD_PORT}, HTTP response: ${response}"
         }
     } catch (Exception e) {
         currentBuild.result = 'FAILURE'
         error "Failed on healthCheckEc2Instance(), http://${ec2Ip}:${env.AWS_PROD_PORT} : ${e.message}"
     }
 
+}
+
+
+def getDomainNameByBranch() {
+    if (env.BRANCH_NAME == 'production') {
+        env.DOMAIN_NAME = env.PRODUCTION_DOMAIN_NAME
+        return env.DOMAIN_NAME
+    }
+    env.DOMAIN_NAME = env.STAGING_DOMAIN_NAME
+    return env.DOMAIN_NAME
 }
 
 
@@ -531,7 +568,7 @@ def updateRoute53Record(String domainName, String ec2Ip) {
                      {
                          "Action": "UPSERT",
                          "ResourceRecordSet": {
-                             "Name": "${domainName}",
+                             "Name": ${domainName},
                              "Type": "A",
                              "TTL": 300,
                              "ResourceRecords": [
