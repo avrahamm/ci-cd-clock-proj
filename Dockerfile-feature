@@ -1,0 +1,41 @@
+ARG PYTHON_VERSION=3.9
+
+# Start from an official Python runtime as a parent image
+FROM python:${PYTHON_VERSION} AS builder
+
+# Set environment variables
+ENV WORKDIR=/usr/src/app \
+    PYTHONPATH=. \
+    PATH="/home/myuser/.local/bin:${PATH}"
+
+# Create a non-root user and give them sudo permissions.
+# To run as non-root user for security reasons.
+RUN apt update && \
+    apt install -y gnupg && \
+    useradd -m -s /bin/bash myuser && \
+    apt update && \
+    echo "myuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Set the working directory
+WORKDIR ${WORKDIR}
+
+# Copy requirements file
+COPY --chown=myuser:myuser requirements-base.txt ./
+COPY --chown=myuser:myuser requirements-feature.txt ./
+
+# Switch to non-root user
+USER myuser
+
+# Install base Python packages
+RUN pip -v install --user pip && \
+    pip -v install -r requirements-base.txt && \
+    pip -v install -r requirements-feature.txt
+
+# Copy code and configuration files
+COPY --chown=myuser:myuser my_clock.py ./
+COPY --chown=myuser:myuser tests/test_my_clock.py.py ./tests/
+COPY --chown=myuser:myuser run-feature-tests.sh ./run-feature-tests.sh
+RUN chmod u+x ./run-feature-tests.sh
+
+# Set the entrypoint
+ENTRYPOINT ["./run-feature-tests.sh"]

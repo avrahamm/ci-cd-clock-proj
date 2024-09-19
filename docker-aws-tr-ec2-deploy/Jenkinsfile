@@ -41,7 +41,7 @@ pipeline {
             steps {
                 script {
                     if (!['production', 'staging'].contains(env.BRANCH_NAME)) {
-                        echo "TODO! test feature branch git push"
+                        buildFeatureImageAndRunFeatureTests()
                         return
                     }
 
@@ -302,6 +302,28 @@ def loginToDockerRegistry() {
     } catch (Exception e) {
         currentBuild.result = 'FAILURE'
         error("Failed stage('loginToDockerRegistry'): ${e.message}")
+    }
+}
+
+def buildFeatureImageAndRunFeatureTests() {
+    try {
+        echo 'Build feature docker images, run container and feature test'
+        sh """
+            docker --debug build -f Dockerfile-feature \
+                   -t ${env.IMAGE_NAME}:feature-${env.GIT_COMMIT_SHORT} .
+            docker run --rm \
+                -d --name ${env.FEATURE_CONTAINER_NAME} \
+                -e WORKDIR=${env.WORKDIR} \
+                -e OUTPUT_FILE_PATH=${env.FEATURE_OUTPUT_FILE_PATH} \
+                ${env.IMAGE_NAME}:feature-${env.GIT_COMMIT_SHORT}
+
+            docker images | grep feature || true
+            # docker image push ${env.IMAGE_NAME}:test-${env.GIT_COMMIT_SHORT}
+
+        """
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        error("Failed buildTestingImageAndRunTests : ${e.message}")
     }
 }
 
