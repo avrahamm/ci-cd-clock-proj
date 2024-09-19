@@ -7,12 +7,6 @@ pipeline {
     }
 
     stages {
-        stage('Debug Environment') {
-            steps {
-                echo "JENKINS_ENV_FILE_PATH: ${env.JENKINS_ENV_FILE_PATH}"
-                sh "cat ${env.JENKINS_ENV_FILE_PATH}"
-            }
-        }
 
         stage('Load Environment Variables') {
             steps {
@@ -143,20 +137,12 @@ pipeline {
 }
 
 def loadCredentialsIntoEnvironmentVariables(String envFilePath) {
-    echo "Attempting to load credentials from: ${envFilePath}"
     try {
-        def propsFile = readFile(envFilePath)
-        echo "File contents: ${propsFile}" // Be cautious with sensitive information
         def props = readProperties file: envFilePath
-        echo "Properties read: ${props}"
 
-        env.DOCKER_HUB_CREDENTIALS_ID = props.DOCKER_HUB_CREDENTIALS_ID ?: ''
-        env.GIT_CREDENTIALS_ID = props.GIT_CREDENTIALS_ID ?: ''
-
-        echo "DOCKER_HUB_CREDENTIALS_ID: ${env.DOCKER_HUB_CREDENTIALS_ID}"
-        echo "GIT_CREDENTIALS_ID: ${env.GIT_CREDENTIALS_ID}"
+        env.DOCKER_HUB_CREDENTIALS_ID = props.DOCKER_HUB_CREDENTIALS_ID
+        env.GIT_CREDENTIALS_ID = props.GIT_CREDENTIALS_ID
     } catch (Exception e) {
-        echo "Exception details: ${e.toString()}"
         currentBuild.result = 'FAILURE'
         error("Failed stage('loadCredentialsIntoEnvironmentVariables'): ${e.message}")
     }
