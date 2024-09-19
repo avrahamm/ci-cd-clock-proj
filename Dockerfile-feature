@@ -33,7 +33,7 @@ RUN pip -v install --user pip && \
 
 # Copy code and configuration files
 COPY --chown=myuser:myuser my_clock.py ./
-COPY --chown=myuser:myuser tests/test_my_clock.py.py ./tests/
+COPY --chown=myuser:myuser tests/test_my_clock.py ./tests/
 COPY --chown=myuser:myuser run-feature-tests.sh ./run-feature-tests.sh
 RUN chmod u+x ./run-feature-tests.sh
 
