@@ -36,15 +36,16 @@ pipeline {
                 }
             }
         }
-    
+
         stage('Test') {
             steps {
                 script {
-                    if (env.BRANCH_NAME == 'production' || env.BRANCH_NAME == 'staging') {
-                        buildTestingImageAndRunTests()
-                    } else {
+                    if (!['production', 'staging'].contains(env.BRANCH_NAME)) {
                         echo "TODO! test feature branch git push"
+                        return
                     }
+
+                    buildTestingImageAndRunTests()
                 }
             }
         }
@@ -261,7 +262,7 @@ def updateVariablesWithGitInfo() {
        // Prepend with branch name
        env.GIT_COMMIT_SHORT = "${env.BRANCH_NAME}-${env.GIT_COMMIT_SHORT}"
 
-       //curren build workspace
+       //current build workspace
        env.WORKSPACE = "clock-${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
 
        // Set the full EC2 instance name including the Git commit
