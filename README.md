@@ -87,6 +87,12 @@ Route53 clock.avrahammlabs.net record is set to new ec2 production ip. <br/>
 http://clock.avrahammlabs.net/ <br/>
 Currently, unused ec2 instances continue to function - need to terminate manually.
 
+CI part of CI/CD.
+You may run with a multibranch pipeline job for git flow scenario 
+with feature, staging and production branches.
+There are conditions for branches for CI part of CI/CD.
+Feature branch runs Unit tests (pytest) only.
+While staging and production run both Unit, 2E tests and deploy.
 
 
 
