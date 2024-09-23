@@ -81,7 +81,7 @@ https://github.com/avrahamm/ci-cd-clock-proj/blob/main/docker-aws-tr-ec2-deploy/
 No static ec2 servers are prepared.
 Jenkinsfile ran testing, created and pushed images to AWS ECR hub <br/>
 locally on Jenkins server main node. <br/>
-Then terrafrom provisions production ec2 instance. <br/>
+Then terraform provisions production ec2 instance. <br/>
 Then production image was run on production server. <br/>
 Route53 clock.avrahammlabs.net record is set to new ec2 production ip. <br/>
 http://clock.avrahammlabs.net/ <br/>
