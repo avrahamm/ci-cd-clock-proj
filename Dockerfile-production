@@ -30,14 +30,14 @@ RUN chown -R myuser:myuser /var/log/nginx /var/lib/nginx /run/nginx && \
     chmod 755 /var/log/nginx /var/lib/nginx /run/nginx
 
 # Copy requirements file
-COPY --chown=myuser:myuser requirements-base.txt ./
+COPY --chown=myuser:myuser requirements-production.txt ./
 
 # Switch to non-root user
 USER myuser
 
 # Install base Python packages
 RUN pip -v install --user pip && \
-    pip -v install -r requirements-base.txt
+    pip -v install -r requirements-production.txt
 
 # Copy application code
 COPY --chown=myuser:myuser my_clock.py ./

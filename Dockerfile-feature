@@ -20,7 +20,6 @@ RUN apt update && \
 WORKDIR ${WORKDIR}
 
 # Copy requirements file
-COPY --chown=myuser:myuser requirements-base.txt ./
 COPY --chown=myuser:myuser requirements-feature.txt ./
 
 # Switch to non-root user
@@ -28,7 +27,6 @@ USER myuser
 
 # Install Python packages
 RUN pip -v install --user pip && \
-    pip -v install -r requirements-base.txt && \
     pip -v install -r requirements-feature.txt
 
 # Copy code and configuration files

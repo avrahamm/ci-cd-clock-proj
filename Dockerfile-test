@@ -17,18 +17,6 @@ RUN useradd -m -s /bin/bash myuser && \
 # Set the working directory
 WORKDIR ${WORKDIR}
 
-# Copy requirements file
-COPY --chown=myuser:myuser requirements-base.txt ./
-
-# Switch to non-root user
-USER myuser
-
-# Install base Python packages
-RUN pip -v install --user pip && \
-    pip -v install -r requirements-base.txt
-
-USER root
-
 ARG CHROME_DRIVER_VERSION=126.0.6478.62
 
 # Set environment variables
